@@ -51,7 +51,7 @@ let () =
   let id = uuid "1b4e28ba-2fa1-11d2-883f-0016d3cca427" in
 
   (* Raising style -- the common path reads like ordinary code. *)
-  (match get_user conn ~id with
+  (match get_user_exn conn ~id with
    | Some u ->
      Printf.printf "user   : %s  balance=%s  at=%s  display_name=%s\n" u.email
        (Decimal.to_string u.balance)
@@ -59,8 +59,8 @@ let () =
        (Option.value u.display_name ~default:"NULL")
    | None -> print_endline "user   : not found");
 
-  (* [_res] variant where you want to handle failure explicitly. *)
-  (match search_users_res conn ~organization_id:id ~email_pattern:"%@example.com" ~limit:10 with
+  (* Default variant returns a result, for when you want to handle failure. *)
+  (match search_users conn ~organization_id:id ~email_pattern:"%@example.com" ~limit:10 with
    | Ok rows -> Printf.printf "search : %d row(s), first = %s\n" (List.length rows) (List.hd rows).email
    | Error e -> Printf.printf "search : failed: %s\n" (Sqlml.Error.to_string e));
 
@@ -70,9 +70,9 @@ let () =
       Printf.printf "posts  : %-20s title=%-8s count=%d\n" r.email
         (Option.value r.title ~default:"NULL")
         r.post_count)
-    (count_posts_by_user conn);
+    (count_posts_by_user_exn conn);
 
-  Printf.printf "deleted: %d\n" (delete_user conn ~id);
+  Printf.printf "deleted: %d\n" (delete_user_exn conn ~id);
 
   (* The query modules are still exported, so generic code works. Nothing in an
      application needs this -- it is for tooling, tracing, batch runners. *)

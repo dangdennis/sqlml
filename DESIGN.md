@@ -42,6 +42,23 @@ explicits and implicits): explicits are what this design wants, 5.3.0 satisfies
 every dependency (`caqti-eio` needs only `ocaml >= 5.0.0`), and it is the least
 experimental branch that has the feature.
 
+## Development database
+
+```bash
+docker compose up -d     # Postgres 18 on 127.0.0.1:55432, schema auto-applied
+```
+
+`example/schema.sql` is mounted into `/docker-entrypoint-initdb.d`, so it runs
+on first boot only. After editing it: `docker compose down -v && docker compose up -d`.
+
+Two gotchas, both hit on the way in:
+
+- **Postgres 18 changed the volume convention.** Data lives in a
+  major-version subdirectory, so the volume mounts at `/var/lib/postgresql`,
+  not `/var/lib/postgresql/data`. Mounting the old path makes the image refuse
+  to start with a `pg_ctlcluster` compatibility error.
+- Port 55432, not 5432, to stay clear of any local install.
+
 ## Why modular explicits here
 
 The execution API:
@@ -123,9 +140,9 @@ available for tooling that wants to be generic over queries.
 **Labelled arguments** on the wrappers: `Db.get_user conn ~id`. Names come
 straight from the `:id` in the SQL.
 
-**Raising by default, `_res` variant alongside**: `get_user` raises
-`Sqlml.Sql_error`, `get_user_res` returns a `result`. (`_opt` would be a bad
-suffix — a `:one` query already returns `option` for "no row".)
+**`result` by default, `_exn` variant alongside**: `get_user` returns
+`(row option, Error.t) result`; `get_user_exn` raises `Sqlml.Sql_error`. Follows
+the usual OCaml convention, and keeps the unsuffixed name total.
 
 **Real types**: `uuid → Uuidm.t`, `timestamptz → Ptime.t`, `numeric →
 Decimal.t`. Postgres prints timestamps as `2026-07-28 09:00:00+00` — a space

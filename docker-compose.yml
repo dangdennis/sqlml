@@ -1,0 +1,38 @@
+# Development database for sqlml.
+#
+# Codegen needs a live Postgres to answer Parse/Describe, and `sqlml check`
+# needs one in CI. Port 55432 is deliberate: it stays out of the way of any
+# Postgres already on 5432.
+#
+#   docker compose up -d
+#   DATABASE_URL=postgresql://sqlml:sqlml@127.0.0.1:55432/sqlml dune exec bin/main.exe
+#
+# Schema in example/schema.sql is applied automatically on first boot. To
+# re-apply after editing it: docker compose down -v && docker compose up -d
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: sqlml-pg
+    environment:
+      POSTGRES_USER: sqlml
+      POSTGRES_PASSWORD: sqlml
+      POSTGRES_DB: sqlml
+      # Deterministic output for the types we parse from text.
+      PGTZ: UTC
+    ports:
+      - "55432:5432"
+    volumes:
+      # Postgres 18+ stores data in a major-version subdirectory, so the volume
+      # mounts at /var/lib/postgresql -- NOT .../data as in 17 and earlier.
+      # Mounting .../data makes the image refuse to start.
+      - pgdata:/var/lib/postgresql
+      - ./example/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sqlml -d sqlml"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

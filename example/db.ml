@@ -53,8 +53,8 @@ module Get_user = struct
     }
 end
 
-let get_user_res conn ~id = Sqlml.fetch_one {Get_user} conn { Get_user.id }
-let get_user conn ~id = Sqlml.or_raise (get_user_res conn ~id)
+let get_user conn ~id = Sqlml.fetch_one {Get_user} conn { Get_user.id }
+let get_user_exn conn ~id = Sqlml.or_raise (get_user conn ~id)
 
 (* ---------- SearchUsers ---------- *)
 
@@ -93,11 +93,11 @@ module Search_users = struct
     }
 end
 
-let search_users_res conn ~organization_id ~email_pattern ~limit =
+let search_users conn ~organization_id ~email_pattern ~limit =
   Sqlml.fetch_all {Search_users} conn { Search_users.organization_id; email_pattern; limit }
 
-let search_users conn ~organization_id ~email_pattern ~limit =
-  Sqlml.or_raise (search_users_res conn ~organization_id ~email_pattern ~limit)
+let search_users_exn conn ~organization_id ~email_pattern ~limit =
+  Sqlml.or_raise (search_users conn ~organization_id ~email_pattern ~limit)
 
 (* ---------- CountPostsByUser ---------- *)
 
@@ -131,8 +131,8 @@ module Count_posts_by_user = struct
     }
 end
 
-let count_posts_by_user_res conn = Sqlml.fetch_all {Count_posts_by_user} conn ()
-let count_posts_by_user conn = Sqlml.or_raise (count_posts_by_user_res conn)
+let count_posts_by_user conn = Sqlml.fetch_all {Count_posts_by_user} conn ()
+let count_posts_by_user_exn conn = Sqlml.or_raise (count_posts_by_user conn)
 
 (* ---------- DeleteUser ---------- *)
 
@@ -144,5 +144,5 @@ module Delete_user = struct
   let encode ({ id } : params) = [ Sqlml.Value.of_uuid id ]
 end
 
-let delete_user_res conn ~id = Sqlml.exec {Delete_user} conn { Delete_user.id }
-let delete_user conn ~id = Sqlml.or_raise (delete_user_res conn ~id)
+let delete_user conn ~id = Sqlml.exec {Delete_user} conn { Delete_user.id }
+let delete_user_exn conn ~id = Sqlml.or_raise (delete_user conn ~id)

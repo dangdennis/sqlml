@@ -32,12 +32,12 @@ module Get_user : sig
   include Sqlml.Query.ONE with type params := params and type row = get_user_row
 end
 
-(** Fetch a single user by id.
-    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val get_user : Sqlml.conn -> id:Uuidm.t -> get_user_row option
+(** Fetch a single user by id. [None] means no row matched. *)
+val get_user : Sqlml.conn -> id:Uuidm.t -> (get_user_row option, Sqlml.Error.t) result
 
-(** Non-raising {!get_user}. *)
-val get_user_res : Sqlml.conn -> id:Uuidm.t -> (get_user_row option, Sqlml.Error.t) result
+(** Raising {!get_user}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+val get_user_exn : Sqlml.conn -> id:Uuidm.t -> get_user_row option
 
 (** {1 SearchUsers} *)
 
@@ -57,18 +57,18 @@ module Search_users : sig
   include Sqlml.Query.MANY with type params := params and type row = search_users_row
 end
 
-(** Users in an organization whose email matches a pattern, newest first.
-    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+(** Users in an organization whose email matches a pattern, newest first. *)
 val search_users :
-  Sqlml.conn -> organization_id:Uuidm.t -> email_pattern:string -> limit:int -> search_users_row list
-
-(** Non-raising {!search_users}. *)
-val search_users_res :
   Sqlml.conn ->
   organization_id:Uuidm.t ->
   email_pattern:string ->
   limit:int ->
   (search_users_row list, Sqlml.Error.t) result
+
+(** Raising {!search_users}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+val search_users_exn :
+  Sqlml.conn -> organization_id:Uuidm.t -> email_pattern:string -> limit:int -> search_users_row list
 
 (** {1 CountPostsByUser} *)
 
@@ -84,11 +84,11 @@ module Count_posts_by_user : sig
   include Sqlml.Query.MANY with type params := params and type row = count_posts_by_user_row
 end
 
-(** @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val count_posts_by_user : Sqlml.conn -> count_posts_by_user_row list
+val count_posts_by_user : Sqlml.conn -> (count_posts_by_user_row list, Sqlml.Error.t) result
 
-(** Non-raising {!count_posts_by_user}. *)
-val count_posts_by_user_res : Sqlml.conn -> (count_posts_by_user_row list, Sqlml.Error.t) result
+(** Raising {!count_posts_by_user}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+val count_posts_by_user_exn : Sqlml.conn -> count_posts_by_user_row list
 
 (** {1 DeleteUser} *)
 
@@ -98,9 +98,9 @@ module Delete_user : sig
   include Sqlml.Query.EXEC with type params := params
 end
 
-(** Returns the number of rows affected.
-    @raise Sqlml.Sql_error on connection or execution failure. *)
-val delete_user : Sqlml.conn -> id:Uuidm.t -> int
+(** Returns the number of rows affected. *)
+val delete_user : Sqlml.conn -> id:Uuidm.t -> (int, Sqlml.Error.t) result
 
-(** Non-raising {!delete_user}. *)
-val delete_user_res : Sqlml.conn -> id:Uuidm.t -> (int, Sqlml.Error.t) result
+(** Raising {!delete_user}.
+    @raise Sqlml.Sql_error on connection or execution failure. *)
+val delete_user_exn : Sqlml.conn -> id:Uuidm.t -> int
