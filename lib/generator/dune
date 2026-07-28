@@ -1,0 +1,4 @@
+(library
+ (name sqlml_gen)
+ (public_name sqlml.gen)
+ (libraries unix))
