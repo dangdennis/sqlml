@@ -1,0 +1,7 @@
+; Core runtime. Deliberately has NO dependency on Caqti or Eio -- the backend
+; boundary lives in Sqlml.Driver, and adapters (lib/sqlml_caqti) implement it.
+; This is what keeps Caqti out of generated code's public signatures.
+
+(library
+ (name sqlml)
+ (public_name sqlml))
