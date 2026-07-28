@@ -22,7 +22,10 @@ for the execution API.
 | `lib/generator/emit.ml` — .ml + .mli emitter | **working** |
 | `bin/` — `sqlml describe` / `sqlml generate` | **working** |
 | `example/generated/` — real generator output, compiled and tested | **passing** |
-| `lib/sqlml_caqti` — Caqti driver | not started |
+| `lib/pq` — raw libpq binding (shared) | **working** |
+| `lib/driver_pg` — Postgres driver over libpq | **working** |
+| `example/e2e.ml` — generated code against real Postgres | **16/16 passing** |
+| Caqti driver — for pooling and SQLite | deferred, see below |
 
 `example/db.mli` is the contract the generator must hit. It is hand-written and
 compiles; the generator's job is to produce it byte-for-byte from
@@ -175,6 +178,25 @@ Two mli details the generator must get right, both found by compiling:
 2. `params` and `row` routinely share field names, and OCaml resolves an
    unannotated `{ id }` to the *last*-defined type — so every generated
    `encode` needs `({ id } : params)` and every `decode` needs `: row`.
+
+## Why the driver is libpq, not Caqti
+
+Caqti was the intended substrate, and `Driver.S` still allows it. Two things
+pushed the first driver onto libpq instead:
+
+- `Driver.S` is *dynamic* -- `Value.t list` in, `Value.t array list` out --
+  while Caqti's value is *static* codecs. Bridging them means existentially
+  packing a `Caqti_type.t` per query shape, for no benefit, since the generator
+  has already done the typing.
+- Caqti sends parameters with explicit type OIDs. Forcing them to text breaks
+  `WHERE uuid_col = $1` with `operator does not exist: uuid = text`. libpq's
+  `PQexecParams` with `paramTypes = NULL` lets the *server* infer, which is
+  what already works in the describe path.
+
+libpq is already a dependency (the generator needs `PQdescribePrepared`), so
+the driver added no new one. A Caqti driver remains worth adding for connection
+pooling and as the route to SQLite -- as a second implementation of `Driver.S`,
+changing nothing above it. That is what the boundary is for.
 
 ## Open decisions
 

@@ -1,0 +1,4 @@
+(library
+ (name sqlml_pg)
+ (public_name sqlml.pg)
+ (libraries sqlml pq))

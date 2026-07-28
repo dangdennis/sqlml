@@ -185,3 +185,29 @@ end
 let set_display_name conn ~id ?display_name () = Sqlml.exec {Set_display_name} conn { Set_display_name.display_name; id }
 let set_display_name_exn conn ~id ?display_name () = Sqlml.or_raise (set_display_name conn ~id ?display_name ())
 
+module Create_user = struct
+  type params =
+    { id : Uuidm.t
+    ; organization_id : Uuidm.t
+    ; email : string
+    ; display_name : string option
+    ; status : user_status
+    ; balance : Decimal.t
+    }
+
+  let name = "CreateUser"
+  let sql = "INSERT INTO users (id, organization_id, email, display_name, status, balance)\nVALUES ($1, $2, $3, $4, $5, $6)"
+
+  let encode (p : params) =
+    [ Sqlml.Value.of_uuid p.id
+    ; Sqlml.Value.of_uuid p.organization_id
+    ; Sqlml.Value.of_string p.email
+    ; (Sqlml.Value.of_option Sqlml.Value.of_string) p.display_name
+    ; user_status_to_value p.status
+    ; Sqlml.Value.of_decimal p.balance
+    ]
+end
+
+let create_user conn ~id ~organization_id ~email ~status ~balance ?display_name () = Sqlml.exec {Create_user} conn { Create_user.id; organization_id; email; display_name; status; balance }
+let create_user_exn conn ~id ~organization_id ~email ~status ~balance ?display_name () = Sqlml.or_raise (create_user conn ~id ~organization_id ~email ~status ~balance ?display_name ())
+

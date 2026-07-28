@@ -1,0 +1,25 @@
+; Raw libpq binding, shared by the generator (which needs PQdescribePrepared)
+; and the runtime driver (which needs PQexecParams). Keeping it separate means
+; neither depends on the other.
+(library
+ (name pq)
+ (public_name sqlml.pq)
+ (foreign_stubs
+  (language c)
+  (names pq_stubs)
+  (flags
+   (:include pq_cflags.sexp)))
+ (c_library_flags
+  (:include pq_libs.sexp)))
+
+(rule
+ (targets pq_cflags.sexp)
+ (deps discover.sh)
+ (action
+  (with-stdout-to pq_cflags.sexp (run sh %{dep:discover.sh} cflags))))
+
+(rule
+ (targets pq_libs.sexp)
+ (deps discover.sh)
+ (action
+  (with-stdout-to pq_libs.sexp (run sh %{dep:discover.sh} libs))))

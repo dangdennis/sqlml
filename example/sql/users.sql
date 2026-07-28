@@ -39,3 +39,8 @@ WHERE id = :id;
 -- display_name is nullable, so it becomes an optional argument and the
 -- generated function takes a trailing ().
 UPDATE users SET display_name = :display_name? WHERE id = :id;
+
+-- name: CreateUser :exec
+-- display_name is nullable, so it becomes an optional argument.
+INSERT INTO users (id, organization_id, email, display_name, status, balance)
+VALUES (:id, :organization_id, :email, :display_name?, :status, :balance);

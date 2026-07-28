@@ -17,6 +17,7 @@
 #include <caml/memory.h>
 #include <caml/alloc.h>
 #include <libpq-fe.h>
+#include <stdlib.h>
 
 #define Conn_val(v) ((PGconn *)Nativeint_val(v))
 #define Res_val(v) ((PGresult *)Nativeint_val(v))
@@ -175,4 +176,36 @@ CAMLprim value sqlml_pq_getisnull(value res, value row, value col)
 {
   CAMLparam3(res, row, col);
   CAMLreturn(Val_bool(PQgetisnull(Res_val(res), Int_val(row), Int_val(col))));
+}
+
+/* ---------- executing ---------- */
+
+/* [params] is a string option array; None becomes SQL NULL.
+ *
+ * paramTypes is NULL on purpose, so the server infers each parameter's type
+ * from context. Forcing them to text -- which is what a statically-typed
+ * client layer naturally does -- breaks comparisons like `WHERE uuid_col = $1`
+ * with "operator does not exist: uuid = text". */
+CAMLprim value sqlml_pq_exec_params(value conn, value sql, value params)
+{
+  CAMLparam3(conn, sql, params);
+  int n = (int)Wosize_val(params);
+  const char **vals = NULL;
+  if (n > 0) vals = (const char **)caml_stat_alloc((size_t)n * sizeof(char *));
+  for (int i = 0; i < n; i++) {
+    value p = Field(params, i);
+    vals[i] = Is_block(p) ? String_val(Field(p, 0)) : NULL;
+  }
+  PGresult *r =
+      PQexecParams(Conn_val(conn), String_val(sql), n, NULL, vals, NULL, NULL, 0);
+  if (vals) caml_stat_free((void *)vals);
+  CAMLreturn(caml_copy_nativeint((intnat)r));
+}
+
+/* Rows affected by an INSERT/UPDATE/DELETE, as reported by the command tag. */
+CAMLprim value sqlml_pq_cmd_tuples(value res)
+{
+  CAMLparam1(res);
+  const char *s = PQcmdTuples(Res_val(res));
+  CAMLreturn(Val_int((s == NULL || *s == '\0') ? 0 : atoi(s)));
 }

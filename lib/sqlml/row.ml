@@ -21,8 +21,21 @@ let get (r : t) i =
   if i < Array.length r then r.(i)
   else raise (Bad { column = i; expected = "a column"; got = "row of fewer columns" })
 
-let int r i = match get r i with Value.Int n -> n | v -> bad i "int" v
-let bool r i = match get r i with Value.Bool b -> b | v -> bad i "bool" v
+(* Text is accepted everywhere a scalar is expected: a driver reading Postgres
+   in text mode hands back every column as a string, so parsing belongs here
+   rather than being duplicated in each driver. *)
+let int r i =
+  match get r i with
+  | Value.Int n -> n
+  | Value.Text s -> (try int_of_string s with _ -> raise (Bad { column = i; expected = "int"; got = s }))
+  | v -> bad i "int" v
+
+let bool r i =
+  match get r i with
+  | Value.Bool b -> b
+  | Value.Text ("t" | "true" | "TRUE" | "y" | "1") -> true
+  | Value.Text ("f" | "false" | "FALSE" | "n" | "0") -> false
+  | v -> bad i "bool" v
 let string r i = match get r i with Value.Text s -> s | v -> bad i "text" v
 let octets r i = match get r i with Value.Octets s | Value.Text s -> s | v -> bad i "octets" v
 
@@ -30,6 +43,7 @@ let float r i =
   match get r i with
   | Value.Float f -> f
   | Value.Int n -> float_of_int n
+  | Value.Text s -> (try float_of_string s with _ -> raise (Bad { column = i; expected = "float"; got = s }))
   | v -> bad i "float" v
 
 (* [option] wraps another decoder: [Row.(option string) r 3] *)

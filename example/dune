@@ -1,4 +1,4 @@
-(executable
- (name main)
- (modules main db wide)
- (libraries sqlml ptime uuidm decimal))
+(executables
+ (names main e2e)
+ (modules main db wide e2e)
+ (libraries sqlml sqlml_pg generated ptime uuidm decimal))

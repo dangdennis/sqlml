@@ -133,3 +133,23 @@ val set_display_name : Sqlml.conn -> id:Uuidm.t -> ?display_name:string -> unit 
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
 val set_display_name_exn : Sqlml.conn -> id:Uuidm.t -> ?display_name:string -> unit -> int
 
+module Create_user : sig
+  type params =
+    { id : Uuidm.t
+    ; organization_id : Uuidm.t
+    ; email : string
+    ; display_name : string option
+    ; status : user_status
+    ; balance : Decimal.t
+    }
+
+  include Sqlml.Query.EXEC with type params := params
+end
+
+(** display_name is nullable, so it becomes an optional argument. *)
+val create_user : Sqlml.conn -> id:Uuidm.t -> organization_id:Uuidm.t -> email:string -> status:user_status -> balance:Decimal.t -> ?display_name:string -> unit -> (int, Sqlml.Error.t) result
+
+(** Raising {!create_user}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+val create_user_exn : Sqlml.conn -> id:Uuidm.t -> organization_id:Uuidm.t -> email:string -> status:user_status -> balance:Decimal.t -> ?display_name:string -> unit -> int
+

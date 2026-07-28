@@ -1,28 +1,4 @@
 (library
  (name sqlml_gen)
  (public_name sqlml.gen)
- (libraries unix)
- (foreign_stubs
-  (language c)
-  (names pq_stubs)
-  (flags
-   (:include pq_cflags.sexp)))
- (c_library_flags
-  (:include pq_libs.sexp)))
-
-; libpq discovery: pkg-config, then pg_config, then a bare -lpq.
-(rule
- (targets pq_cflags.sexp)
- (deps discover.sh)
- (action
-  (with-stdout-to
-   pq_cflags.sexp
-   (run sh %{dep:discover.sh} cflags))))
-
-(rule
- (targets pq_libs.sexp)
- (deps discover.sh)
- (action
-  (with-stdout-to
-   pq_libs.sexp
-   (run sh %{dep:discover.sh} libs))))
+ (libraries unix pq))
