@@ -34,3 +34,8 @@ DELETE FROM users WHERE id = :id;
 SELECT id, organization_id, email, display_name, status, balance, created_at
 FROM users
 WHERE id = :id;
+
+-- name: SetDisplayName :exec
+-- display_name is nullable, so it becomes an optional argument and the
+-- generated function takes a trailing ().
+UPDATE users SET display_name = :display_name? WHERE id = :id;

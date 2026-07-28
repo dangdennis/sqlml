@@ -31,6 +31,7 @@ type param =
   ; ptype_oid : int
   ; ptype_name : string
   ; penum_labels : string list
+  ; pnullable : bool (* from a trailing ? on the placeholder; see Parse.param *)
   }
 
 type described =
@@ -256,16 +257,18 @@ let describe_all conn (queries : Parse.t list) =
          let params =
            List.mapi
              (fun i oid ->
-               let pname =
+               let decl =
                  List.find_opt (fun (p : Parse.param) -> p.Parse.index = i + 1) q.Parse.params
-                 |> Option.map (fun (p : Parse.param) -> p.Parse.pname)
-                 |> Option.value ~default:(Printf.sprintf "arg%d" (i + 1))
                in
                { index = i + 1
-               ; pname
+               ; pname =
+                   (match decl with
+                    | Some p -> p.Parse.pname
+                    | None -> Printf.sprintf "arg%d" (i + 1))
                ; ptype_oid = oid
                ; ptype_name = type_name oid
                ; penum_labels = labels oid
+               ; pnullable = (match decl with Some p -> p.Parse.nullable | None -> false)
                })
              ps
          in

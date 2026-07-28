@@ -22,7 +22,14 @@
 
 type cardinality = One | Many | Exec
 
-type param = { pname : string; index : int }
+(* [nullable] comes from a trailing ? on the placeholder -- [:display_name?].
+   It cannot be inferred: Postgres's Describe reports parameter types but says
+   nothing about whether a parameter may be null, so this has to be stated. *)
+type param =
+  { pname : string
+  ; index : int
+  ; nullable : bool
+  }
 
 type t =
   { name : string; (* GetUser, as written *)
@@ -146,12 +153,17 @@ let rewrite_params ~file ~line sql =
       let j = ref start in
       while !j < n && is_ident_char sql.[!j] do incr j done;
       let name = String.sub sql start (!j - start) in
+      (* trailing ? marks the parameter nullable, and is not part of the SQL *)
+      let nullable = !j < n && sql.[!j] = '?' in
+      if nullable then incr j;
       let index =
         match List.assoc_opt name !order with
-        | Some k -> k
+        | Some (k, was_null) ->
+          order := (name, (k, was_null || nullable)) :: List.remove_assoc name !order;
+          k
         | None ->
           incr next_index;
-          order := (name, !next_index) :: !order;
+          order := (name, (!next_index, nullable)) :: !order;
           !next_index
       in
       Buffer.add_string buf ("$" ^ string_of_int index);
@@ -163,7 +175,8 @@ let rewrite_params ~file ~line sql =
   | Some m -> err file line m
   | None ->
     let params =
-      !order |> List.rev_map (fun (pname, index) -> { pname; index })
+      !order
+      |> List.rev_map (fun (pname, (index, nullable)) -> { pname; index; nullable })
       |> List.sort (fun a b -> compare a.index b.index)
     in
     Ok (Buffer.contents buf, params)
