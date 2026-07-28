@@ -1,1 +1,4 @@
-(executable (name main) (modules main db db_flat db_both) (libraries sqlml))
+(executable
+ (name main)
+ (modules main db)
+ (libraries sqlml ptime uuidm decimal))

@@ -14,9 +14,15 @@ for the execution API.
 |---|---|
 | `lib/sqlml` — runtime, execution API, driver boundary | **working, tested** |
 | `test/` — 6 tests over a fake in-memory driver | **passing** |
-| `lib/sqlml_caqti` — Caqti/Eio driver | empty, next |
-| `lib/generator` — discovery, SQL parse, PG describe, emit | empty |
-| `bin/` — `sqlml generate` CLI | empty |
+| `example/` — hand-written target output + call sites | **compiles and runs** |
+| `lib/generator/parse.ml` — .sql → named queries, `:id` → `$n` | **working** |
+| `lib/generator` — PG describe, typemap, emit | not started |
+| `lib/sqlml_caqti` — Caqti driver | not started |
+| `bin/` — `sqlml generate` CLI | not started |
+
+`example/db.mli` is the contract the generator must hit. It is hand-written and
+compiles; the generator's job is to produce it byte-for-byte from
+`example/sql/users.sql` plus a live database.
 
 ## Toolchain
 
@@ -102,6 +108,39 @@ Both are now encoded in the passing test, and both are the generator's problem:
    the decoder but often only some are read by the caller, which trips
    `unused-field` in the *defining* module — i.e. in generated code, for a
    reason the user cannot fix. Generated files must carry `[@@@warning "-69"]`.
+
+## The generated API
+
+Decided by working through three compiling variants in `example/` (see git
+history for the alternatives).
+
+**Shape C.** Row types at the top level, query modules also exported. One
+`open Db` per file puts every row's fields in scope, so `u.email` works and
+resolves by type-directed disambiguation even when several row types share a
+field name. Exporting the query module keeps `Sqlml.fetch_one {Db.Get_user}`
+available for tooling that wants to be generic over queries.
+
+**Labelled arguments** on the wrappers: `Db.get_user conn ~id`. Names come
+straight from the `:id` in the SQL.
+
+**Raising by default, `_res` variant alongside**: `get_user` raises
+`Sqlml.Sql_error`, `get_user_res` returns a `result`. (`_opt` would be a bad
+suffix — a `:one` query already returns `option` for "no row".)
+
+**Real types**: `uuid → Uuidm.t`, `timestamptz → Ptime.t`, `numeric →
+Decimal.t`. Postgres prints timestamps as `2026-07-28 09:00:00+00` — a space
+instead of RFC3339's `T`, and a 2-digit offset — so `Row.ptime` normalises
+before handing to `Ptime.of_rfc3339`.
+
+Two mli details the generator must get right, both found by compiling:
+
+1. `include Sqlml.Query.ONE with type row := t` is a *destructive* substitution
+   and deletes `type row` from the signature, so the module stops matching
+   `ONE`. It must be `type row = t`. (`params :=` is correct, because `params`
+   is declared just above the include.)
+2. `params` and `row` routinely share field names, and OCaml resolves an
+   unannotated `{ id }` to the *last*-defined type — so every generated
+   `encode` needs `({ id } : params)` and every `decode` needs `: row`.
 
 ## Open decisions
 

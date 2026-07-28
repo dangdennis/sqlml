@@ -31,6 +31,21 @@ module Query = Query
 
 type conn = Driver.t
 
+(* Generated code emits a raising wrapper and a [_res] wrapper per query:
+
+     val get_user     : conn -> id:Uuidm.t -> get_user_row option
+     val get_user_res : conn -> id:Uuidm.t -> (get_user_row option, Error.t) result
+
+   The raising one is [or_raise] applied to the other. *)
+exception Sql_error of Error.t
+
+let or_raise = function Ok v -> v | Error e -> raise (Sql_error e)
+
+let () =
+  Printexc.register_printer (function
+    | Sql_error e -> Some ("Sqlml.Sql_error: " ^ Error.to_string e)
+    | _ -> None)
+
 let decode_fail name (e : exn) =
   match e with
   | Row.Bad { column; expected; got } -> Error.Decode { query = name; column; expected; got }

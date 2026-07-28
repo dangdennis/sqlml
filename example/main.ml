@@ -1,100 +1,87 @@
-(* Side-by-side call sites for the two candidate generated-API shapes.
-   This is hand-written to stand in for generator output so the ergonomics can
-   be judged from real, compiling code rather than a sketch. *)
+(* Realistic call sites for the agreed generated API, against a stub driver so
+   the example runs with no database. Replace [Stub] with the Caqti driver and
+   nothing above it changes. *)
 
-(* A stub driver so the example actually runs without a database. *)
 module Stub = struct
   type conn = unit
 
   let name = "stub"
   let placeholder n = "$" ^ string_of_int n
 
-  let row =
-    [| Sqlml.Value.Text "u-1"
-     ; Sqlml.Value.Text "dennis@example.com"
-     ; Sqlml.Value.Null
-     ; Sqlml.Value.Text "active"
-     ; Sqlml.Value.Text "2026-07-28T09:00:00Z"
-    |]
-
   let contains hay needle =
     let nh = String.length hay and nn = String.length needle in
     let rec go i = i + nn <= nh && (String.sub hay i nn = needle || go (i + 1)) in
     go 0
 
+  let user =
+    [| Sqlml.Value.Text "1b4e28ba-2fa1-11d2-883f-0016d3cca427"
+     ; Sqlml.Value.Text "dennis@example.com"
+     ; Sqlml.Value.Null
+     ; Sqlml.Value.Text "active"
+     ; Sqlml.Value.Text "1234.50"
+     ; (* exactly how Postgres prints timestamptz: space, and a 2-digit offset *)
+       Sqlml.Value.Text "2026-07-28 09:00:00+00"
+    |]
+
   let query () ~sql ~params:_ =
-    if contains sql "display_name" then Ok [ row ]
-    else if contains sql "SELECT" then
-      Ok [ [| Sqlml.Value.Text "u-1"; Sqlml.Value.Text "a@b.c"; Sqlml.Value.Text "2026-07-28" |] ]
-    else Ok []
+    if contains sql "display_name" then Ok [ user ]
+    else if contains sql "post_count" then
+      Ok
+        [ [| Sqlml.Value.Text "dennis@example.com"; Sqlml.Value.Null; Sqlml.Value.Int 0 |]
+        ; [| Sqlml.Value.Text "ann@example.com"; Sqlml.Value.Text "Hello"; Sqlml.Value.Int 3 |]
+        ]
+    else
+      Ok
+        [ [| Sqlml.Value.Text "1b4e28ba-2fa1-11d2-883f-0016d3cca427"
+           ; Sqlml.Value.Text "dennis@example.com"
+           ; Sqlml.Value.Text "2026-07-28 09:00:00+00"
+          |]
+        ]
 
   let exec () ~sql:_ ~params:_ = Ok 1
 end
 
 let conn = Sqlml.Driver.make (module Stub) ()
+let uuid s = Option.get (Uuidm.of_string s)
 
-let fail e = prerr_endline (Sqlml.Error.to_string e); exit 1
+(* One open at the top of the file. Every row's fields are now in scope. *)
+open Db
 
 let () =
-  print_endline "== Shape A: nested module per query ==";
+  let id = uuid "1b4e28ba-2fa1-11d2-883f-0016d3cca427" in
 
-  (* The wrapper hides the modular explicit entirely. *)
-  (match Db.get_user conn ~id:"u-1" with
-   | Ok (Some u) ->
-     (* Field access needs the record's module. This is the wart in Shape A. *)
-     Printf.printf "  qualified : %s\n" u.Db.Get_user.email;
-     (* ...or a local open, which reads better but you write it every time. *)
-     let open Db.Get_user in
-     Printf.printf "  local open: %s (display_name = %s)\n" u.email
-       (match u.display_name with None -> "NULL" | Some s -> s)
-   | Ok None -> print_endline "  not found"
-   | Error e -> fail e);
+  (* Raising style -- the common path reads like ordinary code. *)
+  (match get_user conn ~id with
+   | Some u ->
+     Printf.printf "user   : %s  balance=%s  at=%s  display_name=%s\n" u.email
+       (Decimal.to_string u.balance)
+       (Ptime.to_rfc3339 u.created_at)
+       (Option.value u.display_name ~default:"NULL")
+   | None -> print_endline "user   : not found");
 
-  (* Shape A also keeps the query module public, so the generic runtime works
-     directly -- useful for tooling, middleware, or anything that wants to be
-     polymorphic over queries. Shape B cannot do this. *)
-  (match Sqlml.fetch_all {Db.Search_users} conn
-           { Db.Search_users.organization_id = "org-1"
-           ; email_pattern = "%@example.com"
-           ; limit = 10
-           }
-   with
-   | Ok rows -> Printf.printf "  generic  : %d row(s)\n" (List.length rows)
-   | Error e -> fail e);
+  (* [_res] variant where you want to handle failure explicitly. *)
+  (match search_users_res conn ~organization_id:id ~email_pattern:"%@example.com" ~limit:10 with
+   | Ok rows -> Printf.printf "search : %d row(s), first = %s\n" (List.length rows) (List.hd rows).email
+   | Error e -> Printf.printf "search : failed: %s\n" (Sqlml.Error.to_string e));
 
-  print_endline "";
-  print_endline "== Shape B: flat types, query modules hidden ==";
+  (* Nullability from the LEFT JOIN, and the "!"-pinned computed column. *)
+  List.iter
+    (fun r ->
+      Printf.printf "posts  : %-20s title=%-8s count=%d\n" r.email
+        (Option.value r.title ~default:"NULL")
+        r.post_count)
+    (count_posts_by_user conn);
 
-  (match Db_flat.get_user conn ~id:"u-1" with
-   | Ok (Some u) ->
-     (* [u.email] resolves by type-directed disambiguation -- no open needed,
-        even though search_users_row also has an [email] field. *)
-     Printf.printf "  direct   : %s\n" u.Db_flat.email
-   | Ok None -> print_endline "  not found"
-   | Error e -> fail e);
+  Printf.printf "deleted: %d\n" (delete_user conn ~id);
 
-  (match Db_flat.search_users conn ~organization_id:"org-1" ~email_pattern:"%" ~limit:10 with
-   | Ok rows -> Printf.printf "  search   : %d row(s)\n" (List.length rows)
-   | Error e -> fail e);
+  (* The query modules are still exported, so generic code works. Nothing in an
+     application needs this -- it is for tooling, tracing, batch runners. *)
+  (match Sqlml.fetch_one {Db.Get_user} conn { Db.Get_user.id } with
+   | Ok (Some u) -> Printf.printf "generic: %s\n" u.email
+   | Ok None -> print_endline "generic: none"
+   | Error e -> Printf.printf "generic: failed: %s\n" (Sqlml.Error.to_string e));
 
-  (match Db_flat.delete_user conn ~id:"u-1" with
-   | Ok n -> Printf.printf "  deleted  : %d\n" n
-   | Error e -> fail e);
-
-  print_endline "";
-  print_endline "== Shape C: flat row types AND exported query modules ==";
-
-  (* One open brings the function and every row's field labels into scope. In a
-     real file this is a single [open Db] at the top, then [u.email] anywhere. *)
-  Db_both.(
-    match get_user conn ~id:"u-1" with
-    | Ok (Some u) ->
-      Printf.printf "  direct   : %s (display_name = %s)\n" u.email
-        (Option.value u.display_name ~default:"NULL")
-    | Ok None -> print_endline "  not found"
-    | Error e -> fail e);
-
-  (* ...and the generic runtime still works, which Shape B gave up. *)
-  (match Sqlml.fetch_one {Db_both.Get_user} conn { Db_both.Get_user.id = "u-1" } with
-   | Ok (Some u) -> Printf.printf "  generic  : %s\n" u.Db_both.email
-   | _ -> print_endline "  generic  : none")
+  (* And the raising variant really does raise. *)
+  match Sqlml.fetch_one {Db.Get_user} conn { Db.Get_user.id } with
+  | Error e -> raise (Sqlml.Sql_error e)
+  | Ok _ -> print_endline "done"

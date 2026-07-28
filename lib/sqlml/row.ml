@@ -34,3 +34,55 @@ let float r i =
 
 (* [option] wraps another decoder: [Row.(option string) r 3] *)
 let option decode r i = match get r i with Value.Null -> None | _ -> Some (decode r i)
+
+(* ---------- richer Postgres types ---------- *)
+
+(* Postgres emits ISO timestamps as "2026-07-28 09:00:00+00": a space instead of
+   RFC3339's 'T', and a two-digit offset instead of "+00:00". A timestamp
+   (without time zone) carries no offset at all. Normalise all three so
+   Ptime.of_rfc3339 accepts them. *)
+let normalize_timestamp s =
+  let s = String.map (fun c -> if c = ' ' then 'T' else c) s in
+  let n = String.length s in
+  (* Scan back for the offset sign, stopping before the date's own dashes. *)
+  let tz = ref `None in
+  (try
+     for i = n - 1 downto 10 do
+       match s.[i] with
+       | '+' | '-' -> tz := `At i; raise Exit
+       | 'Z' | 'z' -> tz := `Zulu; raise Exit
+       | _ -> ()
+     done
+   with Exit -> ());
+  match !tz with
+  | `Zulu -> s
+  | `None -> s ^ "Z"
+  | `At i -> (
+    match n - i with
+    | 3 -> s ^ ":00" (* +00    *)
+    | 5 -> String.sub s 0 (i + 3) ^ ":" ^ String.sub s (i + 3) 2 (* +0000  *)
+    | _ -> s (* +00:00 *))
+
+let ptime r i =
+  match get r i with
+  | Value.Text s -> (
+    match Ptime.of_rfc3339 ~strict:false (normalize_timestamp s) with
+    | Ok (t, _, _) -> t
+    | Error _ -> raise (Bad { column = i; expected = "timestamp"; got = s }))
+  | v -> bad i "timestamp" v
+
+let uuid r i =
+  match get r i with
+  | Value.Text s -> (
+    match Uuidm.of_string s with
+    | Some u -> u
+    | None -> raise (Bad { column = i; expected = "uuid"; got = s }))
+  | v -> bad i "uuid" v
+
+let decimal r i =
+  match get r i with
+  | Value.Text s -> (
+    try Decimal.of_string s
+    with _ -> raise (Bad { column = i; expected = "numeric"; got = s }))
+  | Value.Int n -> Decimal.of_int n
+  | v -> bad i "numeric" v

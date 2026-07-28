@@ -1,6 +1,6 @@
 -- name: GetUser :one
 -- Fetch a single user by id.
-SELECT id, email, display_name, status, created_at
+SELECT id, email, display_name, status, balance, created_at
 FROM users
 WHERE id = :id;
 
@@ -14,9 +14,10 @@ ORDER BY created_at DESC
 LIMIT :limit;
 
 -- name: CountPostsByUser :many
--- Shows two things at once: a LEFT JOIN (posts.title is NOT NULL in the
--- schema but nullable in this result), and a computed column where Postgres
--- reports no origin column, so the "!" alias pins it to non-null.
+-- Shows both nullability edge cases at once. posts.title is NOT NULL in the
+-- schema but nullable here because of the LEFT JOIN, so attnotnull alone would
+-- get it wrong. count(...) is a computed column with no origin, so Postgres
+-- reports nothing and the "!" alias pins it to non-null.
 SELECT
   u.email,
   p.title,
