@@ -16,9 +16,11 @@ for the execution API.
 | `test/` — 6 tests over a fake in-memory driver | **passing** |
 | `example/` — hand-written target output + call sites | **compiles and runs** |
 | `lib/generator/parse.ml` — .sql → named queries, `:id` → `$n` | **working** |
-| `lib/generator` — PG describe, typemap, emit | not started |
+| `lib/generator/pq.ml` + `pq_stubs.c` — libpq binding | **working** |
+| `lib/generator/describe.ml` — PG Describe + catalog resolution | **working** |
+| `bin/` — `sqlml describe` | **working** |
+| `lib/generator` — typemap, emit | not started |
 | `lib/sqlml_caqti` — Caqti driver | not started |
-| `bin/` — `sqlml generate` CLI | not started |
 
 `example/db.mli` is the contract the generator must hit. It is hand-written and
 compiles; the generator's job is to produce it byte-for-byte from

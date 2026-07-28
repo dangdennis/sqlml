@@ -20,7 +20,7 @@ LIMIT :limit;
 -- reports nothing and the "!" alias pins it to non-null.
 SELECT
   u.email,
-  p.title,
+  p.title AS "title?",
   coalesce(count(p.id), 0) AS "post_count!"
 FROM users u
 LEFT JOIN posts p ON p.author_id = u.id
@@ -28,3 +28,9 @@ GROUP BY u.email, p.title;
 
 -- name: DeleteUser :exec
 DELETE FROM users WHERE id = :id;
+
+-- name: GetUserFull :one
+-- Selects every column of users, so it should share the model type.
+SELECT id, organization_id, email, display_name, status, balance, created_at
+FROM users
+WHERE id = :id;

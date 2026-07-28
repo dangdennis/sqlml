@@ -1,0 +1,4 @@
+(executable
+ (name main)
+ (public_name sqlml)
+ (libraries sqlml_gen))
