@@ -23,8 +23,27 @@ module Stub = struct
        Sqlml.Value.Text "2026-07-28 09:00:00+00"
     |]
 
+  let ts = Sqlml.Value.Text "2026-07-28 09:00:00+00"
+  let uu = Sqlml.Value.Text "1b4e28ba-2fa1-11d2-883f-0016d3cca427"
+
+  (* the 25-column users row *)
+  let wide =
+    [| uu; uu; Sqlml.Value.Text "dennis@example.com"; Sqlml.Value.Null
+     ; Sqlml.Value.Text "Dennis"; Sqlml.Value.Null; Sqlml.Value.Null; Sqlml.Value.Null
+     ; Sqlml.Value.Text "en"; Sqlml.Value.Text "UTC"
+     ; Sqlml.Value.Text "active"; Sqlml.Value.Text "owner"
+     ; Sqlml.Value.Text "1234.50"; Sqlml.Value.Null
+     ; Sqlml.Value.Int 42; Sqlml.Value.Int 0
+     ; ts; Sqlml.Value.Null; Sqlml.Value.Null
+     ; Sqlml.Value.Bool false; Sqlml.Value.Bool true
+     ; Sqlml.Value.Text "{}"; ts; ts; Sqlml.Value.Null
+    |]
+
   let query () ~sql ~params:_ =
-    if contains sql "display_name" then Ok [ user ]
+    if contains sql "email_verified_at" then Ok [ wide ]
+    else if contains sql "display_name, status\n" then
+      Ok [ [| uu; Sqlml.Value.Text "dennis@example.com"; Sqlml.Value.Text "Dennis"; Sqlml.Value.Text "active" |] ]
+    else if contains sql "display_name" then Ok [ user ]
     else if contains sql "post_count" then
       Ok
         [ [| Sqlml.Value.Text "dennis@example.com"; Sqlml.Value.Null; Sqlml.Value.Int 0 |]
@@ -82,6 +101,34 @@ let () =
    | Error e -> Printf.printf "generic: failed: %s\n" (Sqlml.Error.to_string e));
 
   (* And the raising variant really does raise. *)
-  match Sqlml.fetch_one {Db.Get_user} conn { Db.Get_user.id } with
-  | Error e -> raise (Sqlml.Sql_error e)
-  | Ok _ -> print_endline "done"
+  (match Sqlml.fetch_one {Db.Get_user} conn { Db.Get_user.id } with
+   | Error e -> raise (Sqlml.Sql_error e)
+   | Ok _ -> print_endline "done");
+
+  (* ---------- the same API over a 25-column table ---------- *)
+  print_endline "";
+  print_endline "== wide table (25 columns) ==";
+
+  (* Reading is unaffected by width: you name the fields you want. *)
+  (match Wide.get_user_exn conn ~id with
+   | Some u ->
+     Printf.printf "read   : %s  role=%s  logins=%d  balance=%s\n" u.Wide.email
+       (match u.Wide.role with Wide.Owner -> "owner" | Admin -> "admin" | Member -> "member" | Guest -> "guest")
+       u.Wide.login_count
+       (Decimal.to_string u.Wide.balance)
+   | None -> print_endline "read   : not found");
+
+  (* A narrow projection gets its own small row type. *)
+  (match Wide.list_user_summaries conn ~organization_id:id ~limit:50 with
+   | Ok rows -> Printf.printf "summary: %d row(s), first = %s\n" (List.length rows) (List.hd rows).Wide.email
+   | Error e -> Printf.printf "summary: %s\n" (Sqlml.Error.to_string e));
+
+  (* Writing is where width shows. Twelve labelled arguments: unambiguous and
+     order-independent, but tall, and every one is mandatory. *)
+  let n =
+    Wide.create_user_exn conn ~organization_id:id ~email:"new@example.com"
+      ~display_name:(Some "New Person") ~given_name:None ~family_name:None ~locale:"en"
+      ~timezone:"UTC" ~status:Wide.Active ~role:Wide.Member ~phone:None ~marketing_opt_in:false
+      ~metadata:"{}"
+  in
+  Printf.printf "insert : %d row(s)\n" n

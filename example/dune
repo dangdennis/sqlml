@@ -1,4 +1,4 @@
 (executable
  (name main)
- (modules main db)
+ (modules main db wide)
  (libraries sqlml ptime uuidm decimal))
