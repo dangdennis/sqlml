@@ -44,7 +44,7 @@ let user_role_to_value = function
 
 (* ---------- GetUser ---------- *)
 
-type get_user_row =
+type users_row =
   { id : Uuidm.t
   ; organization_id : Uuidm.t
   ; email : string
@@ -72,7 +72,7 @@ type get_user_row =
   ; deleted_at : Ptime.t option
   }
 
-let decode_user_columns r : get_user_row =
+let decode_user_columns r : users_row =
   let open Sqlml.Row in
   { id = uuid r 0
   ; organization_id = uuid r 1
@@ -110,7 +110,7 @@ let user_columns =
 
 module Get_user = struct
   type params = { id : Uuidm.t }
-  type row = get_user_row
+  type row = users_row
 
   let name = "GetUser"
   let sql = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE id = $1"
@@ -123,37 +123,9 @@ let get_user_exn conn ~id = Sqlml.or_raise (get_user conn ~id)
 
 (* ---------- GetUserByEmail ---------- *)
 
-type get_user_by_email_row = get_user_row =
-  { id : Uuidm.t
-  ; organization_id : Uuidm.t
-  ; email : string
-  ; email_verified_at : Ptime.t option
-  ; display_name : string option
-  ; given_name : string option
-  ; family_name : string option
-  ; avatar_url : string option
-  ; locale : string
-  ; timezone : string
-  ; status : user_status
-  ; role : user_role
-  ; balance : Decimal.t
-  ; credit_limit : Decimal.t option
-  ; login_count : int
-  ; failed_logins : int
-  ; last_login_at : Ptime.t option
-  ; last_seen_ip : string option
-  ; phone : string option
-  ; phone_verified : bool
-  ; marketing_opt_in : bool
-  ; metadata : string
-  ; created_at : Ptime.t
-  ; updated_at : Ptime.t
-  ; deleted_at : Ptime.t option
-  }
-
 module Get_user_by_email = struct
   type params = { email : string }
-  type row = get_user_by_email_row
+  type row = users_row
 
   let name = "GetUserByEmail"
   let sql = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE email = $1"
@@ -252,8 +224,8 @@ module Create_user = struct
     ]
 end
 
-let create_user conn ~organization_id ~email ~display_name ~given_name ~family_name ~locale
-    ~timezone ~status ~role ~phone ~marketing_opt_in ~metadata =
+let create_user conn ~organization_id ~email ~locale ~timezone ~status ~role
+    ~marketing_opt_in ~metadata ?display_name ?given_name ?family_name ?phone () =
   Sqlml.exec {Create_user} conn
     { Create_user.organization_id
     ; email
@@ -269,8 +241,8 @@ let create_user conn ~organization_id ~email ~display_name ~given_name ~family_n
     ; metadata
     }
 
-let create_user_exn conn ~organization_id ~email ~display_name ~given_name ~family_name ~locale
-    ~timezone ~status ~role ~phone ~marketing_opt_in ~metadata =
+let create_user_exn conn ~organization_id ~email ~locale ~timezone ~status ~role
+    ~marketing_opt_in ~metadata ?display_name ?given_name ?family_name ?phone () =
   Sqlml.or_raise
-    (create_user conn ~organization_id ~email ~display_name ~given_name ~family_name ~locale
-       ~timezone ~status ~role ~phone ~marketing_opt_in ~metadata)
+    (create_user conn ~organization_id ~email ~locale ~timezone ~status ~role ~marketing_opt_in
+       ~metadata ?display_name ?given_name ?family_name ?phone ())

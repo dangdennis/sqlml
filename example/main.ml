@@ -109,6 +109,19 @@ let () =
   print_endline "";
   print_endline "== wide table (25 columns) ==";
 
+  (* One helper, written once against the shared model type, works for every
+     query that selects the full users row. Before the shared type this would
+     have needed a copy per query. *)
+  let describe (u : Wide.users_row) =
+    Printf.sprintf "%s <%s>" (Option.value u.Wide.display_name ~default:"?") u.Wide.email
+  in
+  (match Wide.get_user_exn conn ~id with
+   | Some u -> print_endline ("shared : by id    -> " ^ describe u)
+   | None -> ());
+  (match Wide.get_user_by_email_exn conn ~email:"dennis@example.com" with
+   | Some u -> print_endline ("shared : by email -> " ^ describe u)
+   | None -> ());
+
   (* Reading is unaffected by width: you name the fields you want. *)
   (match Wide.get_user_exn conn ~id with
    | Some u ->
@@ -123,12 +136,11 @@ let () =
    | Ok rows -> Printf.printf "summary: %d row(s), first = %s\n" (List.length rows) (List.hd rows).Wide.email
    | Error e -> Printf.printf "summary: %s\n" (Sqlml.Error.to_string e));
 
-  (* Writing is where width shows. Twelve labelled arguments: unambiguous and
-     order-independent, but tall, and every one is mandatory. *)
+  (* Nullable params are optional, so the four Nones are simply omitted. Any
+     query with a nullable parameter ends in (). *)
   let n =
-    Wide.create_user_exn conn ~organization_id:id ~email:"new@example.com"
-      ~display_name:(Some "New Person") ~given_name:None ~family_name:None ~locale:"en"
-      ~timezone:"UTC" ~status:Wide.Active ~role:Wide.Member ~phone:None ~marketing_opt_in:false
-      ~metadata:"{}"
+    Wide.create_user_exn conn ~organization_id:id ~email:"new@example.com" ~locale:"en"
+      ~timezone:"UTC" ~status:Wide.Active ~role:Wide.Member ~marketing_opt_in:false
+      ~metadata:"{}" ~display_name:"New Person" ()
   in
   Printf.printf "insert : %d row(s)\n" n

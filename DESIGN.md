@@ -149,6 +149,19 @@ Decimal.t`. Postgres prints timestamps as `2026-07-28 09:00:00+00` — a space
 instead of RFC3339's `T`, and a 2-digit offset — so `Row.ptime` normalises
 before handing to `Ptime.of_rfc3339`.
 
+**Shared model types.** When a result's columns are exactly one table's columns
+— every column carries the same non-zero `tableoid` from `RowDescription`, and
+together they cover the table — emit one shared `<table>_row` and reuse it
+across every such query. Otherwise the query keeps its own type. Without this,
+two `SELECT *` queries produce field-for-field identical but *nominally
+distinct* records, and no helper can be shared between them. See
+`example/wide.mli`.
+
+**Nullable parameters are optional arguments**, sorted after the mandatory ones
+so the mandatory arguments stay in SQL order. A query with any nullable
+parameter ends in `()`. Trades a trailing unit for dropping a column of
+explicit `None`s on wide inserts.
+
 Two mli details the generator must get right, both found by compiling:
 
 1. `include Sqlml.Query.ONE with type row := t` is a *destructive* substitution
