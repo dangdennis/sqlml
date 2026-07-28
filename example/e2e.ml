@@ -68,5 +68,46 @@ let () =
   check "delete" (Db.delete_user_exn conn ~id = 1);
   check "deleted row is gone" (Db.get_user_exn conn ~id = None);
 
+  (* ---------- transactions ---------- *)
+
+  let insert c ~email =
+    Db.create_user_exn c ~id ~organization_id:org ~email ~status:Db.Active
+      ~balance:(Decimal.of_string "1.00") ()
+  in
+
+  (* commits when the body returns Ok *)
+  (match Sqlml.transaction conn (fun tx -> Ok (insert tx ~email:"committed@example.com")) with
+   | Ok 1 -> check "transaction commits" (Db.get_user_exn conn ~id <> None)
+   | _ -> check "transaction commits" false);
+  ignore (Db.delete_user_exn conn ~id);
+
+  (* rolls back when the body returns Error *)
+  (match
+     Sqlml.transaction conn (fun tx ->
+         ignore (insert tx ~email:"rolled-back@example.com");
+         Error (Sqlml.Error.Connect "deliberate"))
+   with
+   | Error _ -> check "Error rolls back" (Db.get_user_exn conn ~id = None)
+   | Ok _ -> check "Error rolls back" false);
+
+  (* rolls back when the body raises, and re-raises *)
+  (match
+     Sqlml.transaction conn (fun tx ->
+         ignore (insert tx ~email:"raised@example.com");
+         failwith "boom")
+   with
+   | exception Failure _ -> check "raise rolls back and re-raises" (Db.get_user_exn conn ~id = None)
+   | _ -> check "raise rolls back and re-raises" false);
+
+  (* generated functions work unchanged inside a transaction *)
+  (match
+     Sqlml.transaction conn (fun tx ->
+         ignore (insert tx ~email:"in-tx@example.com");
+         match Db.get_user tx ~id with Ok u -> Ok u | Error e -> Error e)
+   with
+   | Ok (Some u) -> check "generated query inside tx sees its own write" (u.Db.email = "in-tx@example.com")
+   | _ -> check "generated query inside tx sees its own write" false);
+  ignore (Db.delete_user_exn conn ~id);
+
   if !failures = 0 then print_endline "all good"
   else (Printf.printf "%d failure(s)\n" !failures; exit 1)

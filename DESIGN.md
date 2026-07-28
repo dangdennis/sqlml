@@ -179,6 +179,52 @@ Two mli details the generator must get right, both found by compiling:
    unannotated `{ id }` to the *last*-defined type — so every generated
    `encode` needs `({ id } : params)` and every `decode` needs `: row`.
 
+## Transactions, and a limitation of modular explicits
+
+```ocaml
+val transaction : conn -> (conn -> ('a, Error.t) result) -> ('a, Error.t) result
+```
+
+Commits on `Ok`, rolls back on `Error` or on an exception (which is re-raised).
+The handle passed to the body has the same type as the outer one, so every
+generated query function works inside a transaction unchanged.
+
+It was meant to be a *distinct* type — `tx conn`, phantom tagged, so that a
+nested transaction was a type error and an outer handle could not be used inside
+the body. **That is not expressible.** Two findings, in order of how much they
+constrain the design:
+
+1. **A binding whose type contains a modular-explicit arrow cannot carry an
+   explicit polymorphic annotation.** Both
+
+   ```ocaml
+   let f : 'k. {Q : S} -> 'k conn -> ... = ...
+   let f : type k. {Q : S} -> k conn -> ... = ...
+   ```
+
+   are rejected with *"the universal variable would escape its scope"*. So when
+   inference declines to generalise a type variable in such a function, there is
+   no way to force it.
+
+2. In this codebase the phantom tag did not generalise through `fetch_one` /
+   `fetch_all` / `exec`, and by (1) it could not be annotated into submission.
+   Minimal reproductions of the shape — phantom parameter, GADT connection,
+   modular-explicit binder, module-typed params, `try`/`with` — all generalise
+   fine, so the trigger is some narrower interaction that was not worth more
+   time to isolate.
+
+Nothing is unsafe today: with a single connection the outer handle *is* the same
+connection, so a statement issued through it is still inside the transaction.
+The exposure appears only once pooling exists, and the fix there needs no
+phantom types — make the pool a distinct type carrying no query operations, so
+that obtaining a connection at all requires going through `transaction` or
+`with_connection`.
+
+This is worth remembering as a general constraint: modular explicits do not
+compose with explicit polymorphic annotations, so any type variable that has to
+be universally quantified alongside a `{M : S}` binder is at the mercy of
+inference.
+
 ## Why the driver is libpq, not Caqti
 
 Caqti was the intended substrate, and `Driver.S` still allows it. Two things

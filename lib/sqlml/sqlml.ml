@@ -29,6 +29,22 @@ module Row = Row
 module Driver = Driver
 module Query = Query
 
+(* A connection handle.
+
+   This is deliberately NOT parameterised by a phantom region tag. The intent
+   was for [transaction] to hand back a distinct [tx conn] so that a nested
+   transaction became a type error. It cannot be done here: the tag does not
+   generalise through the modular-explicit query functions, and a binding whose
+   type contains a modular-explicit arrow cannot carry an explicit polymorphic
+   annotation at all -- both ['k.] and [type k.] are rejected with "the
+   universal variable would escape its scope" -- so there is no way to force it.
+
+   The bug the tag was meant to prevent is using an outer handle inside a
+   transaction body and silently running on a different connection. That is only
+   reachable once pooling exists, and the fix there does not need phantom types:
+   make the pool a distinct type carrying no query operations, so that obtaining
+   a connection at all requires going through [transaction] or
+   [with_connection]. *)
 type conn = Driver.t
 
 (* Generated code emits a raising wrapper and a [_res] wrapper per query:
@@ -78,3 +94,29 @@ let exec {Q : Query.EXEC} (conn : conn) (p : Q.params) : (int, Error.t) result =
     match D.exec c ~sql:Q.sql ~params:(Q.encode p) with
     | Ok n -> Ok n
     | Error message -> Error (Error.Execute { query = Q.name; sql = Q.sql; message }))
+
+(* ---------- transactions ---------- *)
+
+let statement (conn : conn) sql =
+  match conn with
+  | Driver.Conn ((module D), c) -> (
+    match D.exec c ~sql ~params:[] with
+    | Ok _ -> Ok ()
+    | Error message -> Error (Error.Execute { query = "transaction"; sql; message }))
+
+(* Commits when [f] returns [Ok], rolls back when it returns [Error] or raises.
+   An exception is re-raised after the rollback, so [_exn] query functions work
+   inside the body and abort the transaction as you would expect. *)
+let transaction (conn : conn) f =
+  match statement conn "BEGIN" with
+  | Error e -> Error e
+  | Ok () -> (
+    let tx = conn in
+    match f tx with
+    | Ok v -> (match statement conn "COMMIT" with Ok () -> Ok v | Error e -> Error e)
+    | Error e ->
+      ignore (statement conn "ROLLBACK");
+      Error e
+    | exception e ->
+      ignore (statement conn "ROLLBACK");
+      raise e)
