@@ -8,9 +8,9 @@ Runs generated queries through Caqti over Eio, which adds connection
 maintainer: ["Dennis Dang"]
 authors: ["Dennis Dang"]
 license: "MIT"
-homepage: "https://github.com/dangggdennis/sqlml"
-doc: "https://dangggdennis.github.io/sqlml"
-bug-reports: "https://github.com/dangggdennis/sqlml/issues"
+homepage: "https://github.com/dangdennis/ocaml-sql"
+doc: "https://github.com/dangdennis/ocaml-sql"
+bug-reports: "https://github.com/dangdennis/ocaml-sql/issues"
 depends: [
   "ocaml" {>= "5.5.0"}
   "dune" {>= "3.16" & >= "3.16"}
@@ -34,4 +34,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/dangggdennis/sqlml.git"
+dev-repo: "git+https://github.com/dangdennis/ocaml-sql.git"

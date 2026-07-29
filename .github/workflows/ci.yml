@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: sqlml
+          POSTGRES_PASSWORD: sqlml
+          POSTGRES_DB: sqlml
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U sqlml -d sqlml"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://sqlml:sqlml@127.0.0.1:55432/sqlml
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Modular explicits landed in 5.5.0; nothing older can build this.
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5.0"
+
+      - name: Install dependencies
+        run: |
+          opam install --yes \
+            ptime uuidm decimal yojson \
+            cmdliner otoml conf-postgresql \
+            caqti caqti-eio caqti-driver-postgresql eio_main \
+            ocamlformat.0.29.0 odoc
+
+      - name: Build
+        run: opam exec -- dune build
+
+      - name: Unit tests (no database)
+        run: opam exec -- dune test
+
+      - name: Load schema
+        run: PGPASSWORD=sqlml psql -h 127.0.0.1 -p 55432 -U sqlml -d sqlml -f example/schema.sql
+
+      - name: End-to-end (libpq driver)
+        run: opam exec -- dune exec example/e2e.exe
+
+      - name: Examples (single connection, and Caqti pool)
+        run: |
+          opam exec -- dune exec example/app.exe
+          opam exec -- dune exec example/web.exe
+
+      - name: Generated code is current (sqlml check)
+        run: opam exec -- dune exec bin/main.exe -- check -q example/sql -o example/generated
+
+      - name: Formatting
+        run: opam exec -- dune build @fmt
+
+      - name: Documentation
+        run: opam exec -- dune build @doc
