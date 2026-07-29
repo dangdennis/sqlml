@@ -20,7 +20,7 @@ for the execution API.
 | `lib/generator/describe.ml` — PG Describe + catalog resolution | **working** |
 | `lib/generator/typemap.ml` — Postgres type → OCaml type | **working** |
 | `lib/generator/emit.ml` — .ml + .mli emitter | **working** |
-| `bin/` — `sqlml describe` / `sqlml generate` | **working** |
+| `bin/` — cmdliner CLI: `generate`, `check`, `describe` | **working** |
 | `example/generated/` — real generator output, compiled and tested | **passing** |
 | `lib/pq` — raw libpq binding (shared) | **working** |
 | `lib/driver_pg` — Postgres driver over libpq | **working** |
@@ -178,6 +178,38 @@ Two mli details the generator must get right, both found by compiling:
 2. `params` and `row` routinely share field names, and OCaml resolves an
    unannotated `{ id }` to the *last*-defined type — so every generated
    `encode` needs `({ id } : params)` and every `decode` needs `: row`.
+
+## Keeping generated code honest
+
+Generated code keeps compiling after the schema changes under it — a dropped
+column, a widened type, a new enum label, a column that becomes NOT NULL — and
+only fails at runtime. Every type guarantee here is really "as of the last
+`sqlml generate`". `sqlml check` is what converts that into "as of now":
+
+```bash
+sqlml generate -q src/sql -o src/db    # write
+sqlml check    -q src/sql -o src/db    # verify, exit 1 on any difference
+```
+
+`check` regenerates in memory through the *same* pipeline as `generate` — if it
+took a different route it could disagree for reasons unrelated to drift — and
+reports the first differing line of each file:
+
+```
+sqlml: src/db/db.mli:14: out of date
+  on disk:   ; display_name : string option
+  should be: ; display_name : string
+```
+
+Run it in CI against a database migrated to the current schema. Wiring it into
+a build:
+
+```
+(rule
+ (alias runtest)
+ (deps (glob_files sql/*.sql) db.ml db.mli)
+ (action (run sqlml check -q sql -o . -m db)))
+```
 
 ## Transactions, and a limitation of modular explicits
 

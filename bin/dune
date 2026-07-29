@@ -1,4 +1,4 @@
 (executable
  (name main)
  (public_name sqlml)
- (libraries sqlml_gen unix))
+ (libraries sqlml_gen cmdliner unix))

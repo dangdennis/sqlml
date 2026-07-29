@@ -1,41 +1,101 @@
-(* sqlml CLI.
+(* sqlml CLI. *)
 
-     sqlml describe FILE.sql...          dump what Postgres says about each query
-     sqlml generate --queries DIR --out DIR [--module NAME]
-
-   Both need a live Postgres via DATABASE_URL (or PGHOST/PGPORT/PGUSER/
-   PGDATABASE/PGPASSWORD). *)
-
+open Cmdliner
 open Sqlml_gen
 
-let die fmt = Printf.ksprintf (fun s -> prerr_endline s; exit 1) fmt
+let version = "0.1.0"
 
-let sql_files dir =
-  match Sys.readdir dir with
-  | exception Sys_error m -> die "%s" m
-  | entries ->
-    entries |> Array.to_list
-    |> List.filter (fun f -> Filename.check_suffix f ".sql")
-    |> List.sort compare
-    |> List.map (Filename.concat dir)
+(* ---------- shared arguments ---------- *)
 
-let parse_all files =
-  List.concat_map
-    (fun f ->
-      match Parse.of_file f with
-      | Ok qs -> qs
-      | Error (e : Parse.error) -> die "%s:%d: %s" e.Parse.file e.Parse.line e.Parse.message)
-    files
+let queries =
+  let doc = "Directory containing .sql files. Every *.sql directly inside it is read." in
+  Arg.(required & opt (some dir) None & info [ "q"; "queries" ] ~docv:"DIR" ~doc)
 
-let connect () =
-  match Describe.connect (Describe.conninfo_of_env ()) with
-  | Ok c -> c
-  | Error m -> die "could not connect: %s" m
+let out =
+  let doc = "Directory to write the generated module into." in
+  Arg.(required & opt (some string) None & info [ "o"; "out" ] ~docv:"DIR" ~doc)
 
-let describe_files files =
-  let queries = parse_all files in
-  let conn = connect () in
-  (match Describe.describe_all conn queries with
+let module_name =
+  let doc = "Name of the generated module, without extension." in
+  Arg.(value & opt string "db" & info [ "m"; "module" ] ~docv:"NAME" ~doc)
+
+let database =
+  let doc =
+    "Postgres connection string. Defaults to \\$DATABASE_URL, or to \
+     PGHOST/PGPORT/PGUSER/PGDATABASE/PGPASSWORD."
+  in
+  Arg.(value & opt (some string) None & info [ "d"; "database" ] ~docv:"URL" ~doc)
+
+let conninfo_of = function Some u -> u | None -> Describe.conninfo_of_env ()
+
+let die fmt = Printf.ksprintf (fun s -> prerr_endline ("sqlml: " ^ s); exit 1) fmt
+
+let build_or_die ~queries_dir ~database =
+  match Run.build ~queries_dir ~conninfo:(conninfo_of database) with
+  | Ok b -> b
+  | Error m -> die "%s" m
+
+(* ---------- generate ---------- *)
+
+let generate queries_dir out_dir module_name database =
+  let b = build_or_die ~queries_dir ~database in
+  let mli_path, ml_path = Run.write ~out_dir ~module_name b in
+  Printf.printf "wrote %s and %s (%d queries from %d file(s))\n" mli_path ml_path
+    b.Run.queries b.Run.files
+
+let generate_cmd =
+  let doc = "Generate typed OCaml from .sql files." in
+  let man =
+    [ `S Manpage.s_description
+    ; `P
+        "Reads every .sql file in the queries directory, asks PostgreSQL for the parameter and \
+         result types of each query, and writes a single OCaml module."
+    ; `P
+        "Requires a live PostgreSQL whose schema matches the queries. The generated code does \
+         not need one."
+    ]
+  in
+  Cmd.v
+    (Cmd.info "generate" ~doc ~man)
+    Term.(const generate $ queries $ out $ module_name $ database)
+
+(* ---------- check ---------- *)
+
+let check queries_dir out_dir module_name database =
+  let b = build_or_die ~queries_dir ~database in
+  match Run.check ~out_dir ~module_name b with
+  | [] ->
+    Printf.printf "up to date (%d queries from %d file(s))\n" b.Run.queries b.Run.files;
+    exit 0
+  | drifts ->
+    List.iter (fun d -> prerr_endline ("sqlml: " ^ Run.string_of_drift d)) drifts;
+    prerr_endline "sqlml: run `sqlml generate` to update";
+    exit 1
+
+let check_cmd =
+  let doc = "Verify generated code matches the database. Exits non-zero if not." in
+  let man =
+    [ `S Manpage.s_description
+    ; `P
+        "Regenerates in memory and compares against what is on disk, reporting the first \
+         differing line of each file. Exits 1 on any difference."
+    ; `P
+        "This is what makes the types trustworthy over time. Generated code keeps compiling \
+         after the schema changes under it -- a dropped column, a widened type, a new enum \
+         label -- and only fails at runtime. Run this in CI against a database migrated to \
+         the current schema."
+    ]
+  in
+  Cmd.v (Cmd.info "check" ~doc ~man) Term.(const check $ queries $ out $ module_name $ database)
+
+(* ---------- describe ---------- *)
+
+let describe queries_dir database =
+  let conninfo = conninfo_of database in
+  let files = match Run.sql_files queries_dir with Ok f -> f | Error m -> die "%s" m in
+  let qs = match Run.parse_all files with Ok q -> q | Error m -> die "%s" m in
+  let conn = match Describe.connect conninfo with Ok c -> c | Error m -> die "could not connect: %s" m in
+  (match Describe.describe_all conn qs with
    | Error e -> die "%s" (Describe.string_of_error e)
    | Ok described ->
      List.iter
@@ -70,50 +130,33 @@ let describe_files files =
        described);
   Pq.finish conn
 
-let write_file path contents =
-  let oc = open_out_bin path in
-  output_string oc contents;
-  close_out oc
-
-let generate ~queries_dir ~out_dir ~module_name =
-  let files = sql_files queries_dir in
-  if files = [] then die "no .sql files under %s" queries_dir;
-  let queries = parse_all files in
-  let conn = connect () in
-  let described =
-    match Describe.describe_all conn queries with
-    | Error e -> die "%s" (Describe.string_of_error e)
-    | Ok d -> d
+let describe_cmd =
+  let doc = "Print what PostgreSQL says about each query." in
+  let man =
+    [ `S Manpage.s_description
+    ; `P
+        "Diagnostic. Shows inferred parameter types, result columns with their nullability and \
+         originating table, enum labels, and whether the result is exactly one table's row."
+    ]
   in
-  Pq.finish conn;
-  match Emit.generate ~src:queries_dir described with
-  | Error m -> die "%s" m
-  | Ok (mli, ml) ->
-    if not (Sys.file_exists out_dir) then Unix.mkdir out_dir 0o755;
-    let base = Filename.concat out_dir module_name in
-    write_file (base ^ ".mli") mli;
-    write_file (base ^ ".ml") ml;
-    Printf.printf "wrote %s.mli and %s.ml (%d queries from %d file(s))\n" base base
-      (List.length described) (List.length files)
+  Cmd.v (Cmd.info "describe" ~doc ~man) Term.(const describe $ queries $ database)
 
-let () =
-  let rec opts acc = function
-    | [] -> acc
-    | k :: v :: tl when String.length k > 2 && String.sub k 0 2 = "--" ->
-      opts ((String.sub k 2 (String.length k - 2), v) :: acc) tl
-    | k :: _ -> die "unexpected argument %S" k
+(* ---------- entry point ---------- *)
+
+let main =
+  let doc = "SQL-first, type-safe query compiler for OCaml" in
+  let man =
+    [ `S Manpage.s_description
+    ; `P
+        "You write .sql files with sqlc-style annotations; sqlml asks PostgreSQL what the types \
+         are and emits typed OCaml."
+    ; `S Manpage.s_examples
+    ; `Pre "  sqlml generate -q src/sql -o src/db"
+    ; `Pre "  sqlml check    -q src/sql -o src/db"
+    ; `S Manpage.s_environment
+    ; `P "DATABASE_URL, or PGHOST / PGPORT / PGUSER / PGDATABASE / PGPASSWORD."
+    ]
   in
-  match Array.to_list Sys.argv with
-  | _ :: "describe" :: (_ :: _ as files) -> describe_files files
-  | _ :: "generate" :: rest ->
-    let o = opts [] rest in
-    let get k d =
-      match List.assoc_opt k o with Some v -> v | None -> (match d with Some d -> d | None -> die "generate: --%s is required" k)
-    in
-    generate ~queries_dir:(get "queries" None) ~out_dir:(get "out" None)
-      ~module_name:(get "module" (Some "db"))
-  | _ ->
-    prerr_endline "usage:";
-    prerr_endline "  sqlml describe FILE.sql...";
-    prerr_endline "  sqlml generate --queries DIR --out DIR [--module NAME]";
-    exit 1
+  Cmd.group (Cmd.info "sqlml" ~version ~doc ~man) [ generate_cmd; check_cmd; describe_cmd ]
+
+let () = exit (Cmd.eval main)

@@ -8,6 +8,7 @@ let ( let* ) = Result.bind
 type field =
   { fname : string
   ; ftype : Typemap.t
+  ; ord : int (* attnum for a table column, 0 otherwise *)
   }
 
 (* ---------- resolution ---------- *)
@@ -17,7 +18,7 @@ let resolve_column (q : Parse.t) (c : Describe.column) =
     Typemap.of_pg ~type_name:c.Describe.type_name ~enum_labels:c.Describe.enum_labels
       ~nullable:c.Describe.nullable
   with
-  | Some t -> Ok { fname = c.Describe.name; ftype = t }
+  | Some t -> Ok { fname = c.Describe.name; ftype = t; ord = c.Describe.table_col }
   | None ->
     Error
       (Printf.sprintf "%s:%d: %s: column %S has Postgres type %S, which sqlml has no mapping for"
@@ -28,7 +29,7 @@ let resolve_param (q : Parse.t) (p : Describe.param) =
     Typemap.of_pg ~type_name:p.Describe.ptype_name ~enum_labels:p.Describe.penum_labels
       ~nullable:p.Describe.pnullable
   with
-  | Some t -> Ok { fname = p.Describe.pname; ftype = t }
+  | Some t -> Ok { fname = p.Describe.pname; ftype = t; ord = 0 }
   | None ->
     Error
       (Printf.sprintf
@@ -46,7 +47,8 @@ type resolved =
   { d : Describe.described
   ; row_type : string option (* None for :exec *)
   ; shared : bool
-  ; cols : field list
+  ; cols : field list (* SELECT order -- decoders index by position *)
+  ; type_fields : field list (* order the record type is declared in *)
   ; ps : field list
   }
 
@@ -62,7 +64,15 @@ let resolve (d : Describe.described) =
   let row_type =
     match q.Parse.cardinality with Parse.Exec -> None | _ -> Some (row_type_name d)
   in
-  Ok { d; row_type; shared = d.Describe.model_table <> None; cols; ps }
+  let shared = d.Describe.model_table <> None in
+  (* A shared model must not depend on the order columns happen to appear in one
+     query's SELECT list: two queries selecting the same table's full row in
+     different orders describe the same type. Canonicalise on attnum. Decoders
+     are unaffected -- they build the record by field name from [cols]. *)
+  let type_fields =
+    if shared then List.stable_sort (fun a b -> compare a.ord b.ord) cols else cols
+  in
+  Ok { d; row_type; shared; cols; type_fields; ps }
 
 (* ---------- collecting shared pieces ---------- *)
 
@@ -99,10 +109,10 @@ let collect_rows resolved =
       | Some name -> (
         match Hashtbl.find_opt seen name with
         | None ->
-          Hashtbl.replace seen name r.cols;
-          order := (name, r.cols) :: !order;
+          Hashtbl.replace seen name r.type_fields;
+          order := (name, r.type_fields) :: !order;
           go tl
-        | Some prev when prev = r.cols -> go tl
+        | Some prev when prev = r.type_fields -> go tl
         | Some _ ->
           Error
             (Printf.sprintf
