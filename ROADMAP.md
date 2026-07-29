@@ -124,7 +124,7 @@ val transaction :
 With `?retry`, a `40001` or `40P01` re-runs the body — the standard serializable
 pattern, and the reason (1) comes first.
 
-## 5. Streaming, and a stricter :one
+## 5. Streaming, and a stricter :one — done
 
 Two small, independent wins.
 

@@ -18,7 +18,7 @@
     means we never rewrite the user's SELECT list, and a marker can never be confused with
     SQL syntax. *)
 
-type cardinality = One | Many | Exec
+type cardinality = One | One_strict | Many | Exec
 
 (* [nullable] comes from a trailing ? on the placeholder -- [:display_name?].
    It cannot be inferred: Postgres's Describe reports parameter types but says
@@ -228,6 +228,7 @@ let is_comment line =
 
 let cardinality_of_string = function
   | "one" -> Some One
+  | "one!" -> Some One_strict
   | "many" -> Some Many
   | "exec" -> Some Exec
   | _ -> None
@@ -310,4 +311,8 @@ let of_file file =
   close_in ic;
   of_string ~file contents
 
-let string_of_cardinality = function One -> "one" | Many -> "many" | Exec -> "exec"
+let string_of_cardinality = function
+  | One -> "one"
+  | One_strict -> "one!"
+  | Many -> "many"
+  | Exec -> "exec"

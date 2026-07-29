@@ -39,6 +39,33 @@ val fetch_all :
 
 val exec : (module Q : Query.EXEC) -> conn -> Q.params -> (int, Error.t) result
 
+val fetch_one_strict :
+  (module Q : Query.ONE_STRICT) -> conn -> Q.params -> (Q.row, Error.t) result
+(** For queries declared [:one!]: the row is returned directly, and its absence is an
+    [Error.Cardinality] rather than [None]. *)
+
+(** {1 Streaming}
+
+    For results too large to hold as a list. Rows are read in batches from a server-side
+    cursor, so memory use is bounded by [~batch], not by the result size. Works through
+    both drivers, and inside an enclosing transaction.
+
+    The fold runs inside a transaction of its own (a cursor requires one); if [f] raises,
+    the transaction rolls back and the exception is re-raised. *)
+
+val fetch_fold :
+  (module Q : Query.MANY) ->
+  ?batch:int ->
+  conn ->
+  Q.params ->
+  init:'acc ->
+  f:('acc -> Q.row -> 'acc) ->
+  ('acc, Error.t) result
+
+val fetch_iter :
+  (module Q : Query.MANY) ->
+  ?batch:int -> conn -> Q.params -> f:(Q.row -> unit) -> (unit, Error.t) result
+
 (** {1 Transactions} *)
 
 val transaction :

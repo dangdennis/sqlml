@@ -53,6 +53,15 @@ type get_tag_set_row = {
   meta : Yojson.Safe.t;
 }
 
+type get_user_strict_row = {
+  id : User_id.t;
+  email : string;
+  name : string option;
+  status : user_status;
+  balance : Decimal.t;
+  created_at : Ptime.t;
+}
+
 module Count_users_by_status = struct
   type params = unit
   type row = count_users_by_status_row
@@ -362,3 +371,35 @@ end
 
 let get_tag_set conn ~id = Sqlml.fetch_one (module Get_tag_set) conn { Get_tag_set.id }
 let get_tag_set_exn conn ~id = Sqlml.or_raise (get_tag_set conn ~id)
+
+module Get_user_strict = struct
+  type params = { id : Uuidm.t }
+  type row = get_user_strict_row
+
+  let name = "GetUserStrict"
+
+  let sql =
+    "SELECT id, email, display_name, status, balance, created_at\n\
+     FROM users\n\
+     WHERE id = $1"
+
+  let encode (p : params) = [ Sqlml.Value.of_uuid p.id ]
+
+  let decode r : get_user_strict_row =
+    {
+      id = (Sqlml.Row.custom User_id.of_string) r 0;
+      email = Sqlml.Row.string r 1;
+      name = (Sqlml.Row.option Sqlml.Row.string) r 2;
+      status = user_status_of_row r 3;
+      balance = Sqlml.Row.decimal r 4;
+      created_at = Sqlml.Row.ptime r 5;
+    }
+
+  let columns = 6
+  let cardinality = Sqlml.Query.One_strict
+end
+
+let get_user_strict conn ~id =
+  Sqlml.fetch_one_strict (module Get_user_strict) conn { Get_user_strict.id }
+
+let get_user_strict_exn conn ~id = Sqlml.or_raise (get_user_strict conn ~id)

@@ -62,6 +62,24 @@ let () =
   Printf.printf "pool     : up (max 4 connections)\n";
 
   (* clean slate *)
+  (* streaming through the Caqti driver: DECLARE/FETCH ride the same Driver.S
+     operations, so the pool needs nothing special *)
+  (match
+     Sqlml_caqti.Pool.use pool (fun c ->
+         Sqlml.fetch_fold
+           (module Search_users)
+           ~batch:2 c
+           {
+             Search_users.organization_id = org;
+             email_pattern = "%@example.com";
+             limit = 100;
+           }
+           ~init:0
+           ~f:(fun n _ -> n + 1))
+   with
+  | Ok n -> Printf.printf "stream   : %d row(s) in batches of 2\n" n
+  | Error e -> Printf.printf "stream   : %s\n" (Sqlml.Error.to_string e));
+
   List.iter
     (fun (id, _, _) -> ignore (Sqlml_caqti.Pool.use pool (fun c -> delete_user c ~id)))
     people;
@@ -133,6 +151,24 @@ let () =
         (t.states = [ Active ])
   | Ok None -> print_endline "arrays   : missing"
   | Error e -> Printf.printf "arrays   : %s\n" (Sqlml.Error.to_string e));
+
+  (* streaming through the Caqti driver: DECLARE/FETCH ride the same Driver.S
+     operations, so the pool needs nothing special *)
+  (match
+     Sqlml_caqti.Pool.use pool (fun c ->
+         Sqlml.fetch_fold
+           (module Search_users)
+           ~batch:2 c
+           {
+             Search_users.organization_id = org;
+             email_pattern = "%@example.com";
+             limit = 100;
+           }
+           ~init:0
+           ~f:(fun n _ -> n + 1))
+   with
+  | Ok n -> Printf.printf "stream   : %d row(s) in batches of 2\n" n
+  | Error e -> Printf.printf "stream   : %s\n" (Sqlml.Error.to_string e));
 
   List.iter
     (fun (id, _, _) -> ignore (Sqlml_caqti.Pool.use pool (fun c -> delete_user c ~id)))

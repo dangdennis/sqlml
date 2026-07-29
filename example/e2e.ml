@@ -312,6 +312,71 @@ let () =
       check "serialization failure retried" false);
   ignore (Db.delete_user_exn conn ~id:victim);
 
+  (* ---------- :one! ---------- *)
+  let s1 = uuid "eeeeeeee-0000-4000-8000-000000000001" in
+  ignore (Db.delete_user_exn conn ~id:s1);
+  ignore
+    (Db.create_user_exn conn ~id:s1 ~organization_id:org ~email:"strict@example.com"
+       ~status:Db.Active ~balance:(Decimal.of_string "0.00") ());
+  (match Db.get_user_strict conn ~id:s1 with
+  | Ok u -> check ":one! returns the row unwrapped" (u.Db.email = "strict@example.com")
+  | Error _ -> check ":one! returns the row unwrapped" false);
+  ignore (Db.delete_user_exn conn ~id:s1);
+  (match Db.get_user_strict conn ~id:s1 with
+  | Error (Sqlml.Error.Cardinality { expected = "exactly 1"; got = 0; _ }) ->
+      check ":one! absence is a Cardinality error" true
+  | _ -> check ":one! absence is a Cardinality error" false);
+
+  (* ---------- streaming ---------- *)
+  let ids =
+    List.map
+      (fun i -> uuid (Printf.sprintf "ffffffff-0000-4000-8000-%012d" i))
+      [ 1; 2; 3; 4; 5 ]
+  in
+  List.iteri
+    (fun i id ->
+      ignore (Db.delete_user_exn conn ~id);
+      ignore
+        (Db.create_user_exn conn ~id ~organization_id:org
+           ~email:(Printf.sprintf "stream-%d@example.com" i)
+           ~status:Db.Active ~balance:(Decimal.of_string "0.00") ()))
+    ids;
+
+  (* batch 2 over 5 rows forces three FETCHes, so batching is actually exercised *)
+  (match
+     Sqlml.fetch_fold
+       (module Db.Search_users)
+       ~batch:2 conn
+       { Db.Search_users.organization_id = org; email_pattern = "stream-%"; limit = 100 }
+       ~init:0
+       ~f:(fun n _ -> n + 1)
+   with
+  | Ok n -> check "fetch_fold sees all rows across batches" (n = 5)
+  | Error e ->
+      print_endline (Sqlml.Error.to_string e);
+      check "fetch_fold sees all rows across batches" false);
+
+  (* streaming inside an enclosing transaction: the cursor nests via savepoint *)
+  (match
+     Sqlml.transaction conn (fun tx ->
+         Sqlml.fetch_fold
+           (module Db.Search_users)
+           ~batch:2 tx
+           {
+             Db.Search_users.organization_id = org;
+             email_pattern = "stream-%";
+             limit = 100;
+           }
+           ~init:[]
+           ~f:(fun acc r -> r.Db.email :: acc))
+   with
+  | Ok emails -> check "streaming inside a transaction" (List.length emails = 5)
+  | Error e ->
+      print_endline (Sqlml.Error.to_string e);
+      check "streaming inside a transaction" false);
+
+  List.iter (fun id -> ignore (Db.delete_user_exn conn ~id)) ids;
+
   if !failures = 0 then print_endline "all good"
   else (
     Printf.printf "%d failure(s)\n" !failures;

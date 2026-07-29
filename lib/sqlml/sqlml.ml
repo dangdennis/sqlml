@@ -130,6 +130,19 @@ let exec (module Q : Query.EXEC) (conn : conn) (p : Q.params) : (int, Error.t) r
                  column_name = d.Driver.column_name;
                }))
 
+let fetch_one_strict (module Q : Query.ONE_STRICT) (conn : conn) (p : Q.params) :
+    (Q.row, Error.t) result =
+  match
+    run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns
+  with
+  | Error e -> Error e
+  | Ok [] -> Error (Error.Cardinality { query = Q.name; expected = "exactly 1"; got = 0 })
+  | Ok [ r ] -> ( try Ok (Q.decode r) with e -> Error (decode_fail Q.name e))
+  | Ok rows ->
+      Error
+        (Error.Cardinality
+           { query = Q.name; expected = "exactly 1"; got = List.length rows })
+
 (* ---------- transactions ---------- *)
 
 let statement (conn : conn) sql =
@@ -230,3 +243,68 @@ let transaction ?isolation ?(retry = 0) (conn : conn) f =
     in
     attempt retry
   end
+
+(* ---------- streaming ---------- *)
+
+(* Batched streaming over a server-side cursor, composed entirely from the
+   operations Driver.S already has -- DECLARE with the query's own parameters,
+   FETCH FORWARD in batches, CLOSE -- so both drivers stream without changes.
+
+   A WITHOUT HOLD cursor needs a transaction; [transaction] provides one, and
+   its savepoint nesting means streaming inside a caller's transaction works.
+   The fold therefore runs inside a transaction, and its effects roll back if
+   the fold raises. *)
+
+let cursor_counter = ref 0
+
+let fetch_fold (module Q : Query.MANY) ?(batch = 500) (conn : conn) (p : Q.params)
+    ~(init : 'acc) ~(f : 'acc -> Q.row -> 'acc) : ('acc, Error.t) result =
+  if batch <= 0 then invalid_arg "Sqlml.fetch_fold: ~batch must be positive";
+  incr cursor_counter;
+  let cur = Printf.sprintf "sqlml_cursor_%d" !cursor_counter in
+  transaction conn @@ fun tx ->
+  let declare () =
+    match tx with
+    | Driver.Conn ((module D), c, _) -> (
+        match
+          D.exec c
+            ~sql:(Printf.sprintf "DECLARE %s NO SCROLL CURSOR FOR %s" cur Q.sql)
+            ~params:(Q.encode p)
+        with
+        | Ok _ -> Ok ()
+        | Error (d : Driver.error) ->
+            Error
+              (Error.Execute
+                 {
+                   query = Q.name;
+                   sql = Q.sql;
+                   message = d.Driver.message;
+                   sqlstate = d.Driver.sqlstate;
+                   detail = d.Driver.detail;
+                   hint = d.Driver.hint;
+                   constraint_name = d.Driver.constraint_name;
+                   table_name = d.Driver.table_name;
+                   column_name = d.Driver.column_name;
+                 }))
+  in
+  let fetch_sql = Printf.sprintf "FETCH FORWARD %d FROM %s" batch cur in
+  let rec loop acc =
+    match run_query tx ~name:Q.name ~sql:fetch_sql ~params:[] ~columns:Q.columns with
+    | Error e -> Error e
+    | Ok [] -> Ok acc
+    | Ok rows -> (
+        match List.fold_left (fun a r -> f a (Q.decode r)) acc rows with
+        | acc -> if List.length rows < batch then Ok acc else loop acc
+        | exception e -> Error (decode_fail Q.name e))
+  in
+  match declare () with
+  | Error e -> Error e
+  | Ok () -> (
+      let out = loop init in
+      match statement tx ("CLOSE " ^ cur) with
+      | Ok () -> out
+      | Error e -> ( match out with Error _ -> out | Ok _ -> Error e))
+
+let fetch_iter (module Q : Query.MANY) ?batch (conn : conn) (p : Q.params)
+    ~(f : Q.row -> unit) : (unit, Error.t) result =
+  fetch_fold (module Q) ?batch conn p ~init:() ~f:(fun () r -> f r)

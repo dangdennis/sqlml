@@ -106,6 +106,7 @@ it and only fails at runtime; `check` is what catches that.
 | Syntax | Meaning |
 | --- | --- |
 | `-- name: GetUser :one` | at most one row; returns `option` |
+| `-- name: GetUser :one!` | exactly one row; returned unwrapped, absence is an error |
 | `-- name: ListUsers :many` | zero or more rows; returns `list` |
 | `-- name: DeleteUser :exec` | no rows; returns the affected count |
 | `:id` | named parameter, becomes a labelled argument |
@@ -212,6 +213,21 @@ match create_user conn ~id ~email () with
 The libpq driver also reports the constraint name, detail, hint, table and
 column. The Caqti driver reports only the message and code, which is all Caqti
 exposes.
+
+## Streaming
+
+For results too large to hold as a list, rows are read in batches from a
+server-side cursor, so memory is bounded by the batch size:
+
+```ocaml
+Sqlml.fetch_fold (module Db.Search_users) ~batch:1000 conn
+  { organization_id; email_pattern = "%"; limit = 1_000_000 }
+  ~init:0 ~f:(fun n _row -> n + 1)
+```
+
+`fetch_iter` is the same with no accumulator. Streaming uses the exported query
+module directly, so parameters are passed as the record rather than labelled
+arguments. Works through both drivers and inside an enclosing transaction.
 
 ## Transactions
 

@@ -58,3 +58,9 @@ ON CONFLICT (id) DO UPDATE
 
 -- name: GetTagSet :one
 SELECT tags, scores, states, meta FROM tag_sets WHERE id = :id;
+
+-- name: GetUserStrict :one!
+-- The row must exist; absence is an error, so the row comes back unwrapped.
+SELECT id, email, display_name, status, balance, created_at
+FROM users
+WHERE id = :id;

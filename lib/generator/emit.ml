@@ -223,18 +223,21 @@ let arg_use f = (if Typemap.is_option f.ftype then "?" else "~") ^ f.fname
 let result_type r =
   match r.d.Describe.query.Parse.cardinality with
   | Parse.One -> Printf.sprintf "%s option" (Option.get r.row_type)
+  | Parse.One_strict -> Option.get r.row_type
   | Parse.Many -> Printf.sprintf "%s list" (Option.get r.row_type)
   | Parse.Exec -> "int"
 
 let runner r =
   match r.d.Describe.query.Parse.cardinality with
   | Parse.One -> "Sqlml.fetch_one"
+  | Parse.One_strict -> "Sqlml.fetch_one_strict"
   | Parse.Many -> "Sqlml.fetch_all"
   | Parse.Exec -> "Sqlml.exec"
 
 let query_sig r =
   match r.d.Describe.query.Parse.cardinality with
   | Parse.One -> "Sqlml.Query.ONE"
+  | Parse.One_strict -> "Sqlml.Query.ONE_STRICT"
   | Parse.Many -> "Sqlml.Query.MANY"
   | Parse.Exec -> "Sqlml.Query.EXEC"
 
@@ -323,6 +326,7 @@ let emit_implementation b r =
   bprintf b "\n  let cardinality = %s\n"
     (match r.d.Describe.query.Parse.cardinality with
     | Parse.One -> "Sqlml.Query.One"
+    | Parse.One_strict -> "Sqlml.Query.One_strict"
     | Parse.Many -> "Sqlml.Query.Many"
     | Parse.Exec -> "Sqlml.Query.Exec");
   bprintf b "end\n\n";

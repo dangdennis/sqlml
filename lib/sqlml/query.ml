@@ -11,9 +11,15 @@
    witness value in each signature is what makes the cardinality real. *)
 
 type one = One_tag
+type one_strict = One_strict_tag
 type many = Many_tag
 type exec = Exec_tag
-type _ card = One : one card | Many : many card | Exec : exec card
+
+type _ card =
+  | One : one card
+  | One_strict : one_strict card
+  | Many : many card
+  | Exec : exec card
 
 module type BASE = sig
   type params
@@ -36,6 +42,17 @@ module type ONE = sig
      row type, unlike libpq which reports the shape back with the result. *)
   val columns : int
   val cardinality : one card
+end
+
+(* -- name: GetUser :one! -- the row must exist; absence is an error *)
+module type ONE_STRICT = sig
+  include BASE
+
+  type row
+
+  val decode : Row.t -> row
+  val columns : int
+  val cardinality : one_strict card
 end
 
 (* -- name: SearchUsers :many *)

@@ -39,6 +39,15 @@ type get_tag_set_row = {
   meta : Yojson.Safe.t;
 }
 
+type get_user_strict_row = {
+  id : User_id.t;
+  email : string;
+  name : string option;
+  status : user_status;
+  balance : Decimal.t;
+  created_at : Ptime.t;
+}
+
 module Count_users_by_status : sig
   type params = unit
 
@@ -246,4 +255,19 @@ val get_tag_set :
 
 val get_tag_set_exn : Sqlml.conn -> id:Uuidm.t -> get_tag_set_row option
 (** Raising {!get_tag_set}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
+module Get_user_strict : sig
+  type params = { id : Uuidm.t }
+
+  include
+    Sqlml.Query.ONE_STRICT with type params := params and type row = get_user_strict_row
+end
+
+val get_user_strict :
+  Sqlml.conn -> id:Uuidm.t -> (get_user_strict_row, Sqlml.Error.t) result
+(** The row must exist; absence is an error, so the row comes back unwrapped. *)
+
+val get_user_strict_exn : Sqlml.conn -> id:Uuidm.t -> get_user_strict_row
+(** Raising {!get_user_strict}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
