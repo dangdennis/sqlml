@@ -61,9 +61,33 @@ let parse_all files =
 
 let ( let* ) = Result.bind
 
+(* All queries land in one module regardless of which file they came from, so a
+   name used twice would emit two modules of the same name and produce output
+   that does not compile. Caught here, before the database round-trip, with both
+   locations named. *)
+let check_unique_names (queries : Parse.t list) =
+  let seen = Hashtbl.create 16 in
+  let rec go = function
+    | [] -> Ok ()
+    | (q : Parse.t) :: tl -> (
+      match Hashtbl.find_opt seen q.Parse.name with
+      | Some (f, l) ->
+        Error
+          (Printf.sprintf
+             "%s:%d: duplicate query name %S, already defined at %s:%d\n\
+             \  query names must be unique across every .sql file, because they all \
+              generate into one module"
+             q.Parse.file q.Parse.line q.Parse.name f l)
+      | None ->
+        Hashtbl.replace seen q.Parse.name (q.Parse.file, q.Parse.line);
+        go tl)
+  in
+  go queries
+
 let build ~queries_dir ~conninfo =
   let* files = sql_files queries_dir in
   let* queries = parse_all files in
+  let* () = check_unique_names queries in
   let* conn = Describe.connect conninfo in
   let described =
     Describe.describe_all conn queries |> Result.map_error Describe.string_of_error

@@ -86,8 +86,10 @@ sqlml describe -q sql                print what PostgreSQL says about each query
 Connection comes from `DATABASE_URL`, or `PGHOST`/`PGPORT`/`PGUSER`/
 `PGDATABASE`/`PGPASSWORD`, or `--database`.
 
-`-q` defaults to `sql` and is searched recursively. All queries land in one
-module, so row types can be shared across files.
+`-q` defaults to `sql` and is searched recursively. Every query becomes a nested
+module inside one generated module, whichever file it came from, so row types
+can be shared across files. Query names must therefore be unique project-wide;
+a collision is reported with both locations.
 
 Run `check` in CI. Generated code keeps compiling after the schema moves under
 it and only fails at runtime; `check` is what catches that.
