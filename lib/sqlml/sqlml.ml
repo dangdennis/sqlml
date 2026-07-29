@@ -65,63 +65,92 @@ let () =
 
 let decode_fail name (e : exn) =
   match e with
-  | Row.Bad { column; expected; got } -> Error.Decode { query = name; column; expected; got }
+  | Row.Bad { column; expected; got } ->
+      Error.Decode { query = name; column; expected; got }
   | e -> raise e
 
 let run_query (conn : conn) ~name ~sql ~params ~columns =
   match conn with
   | Driver.Conn ((module D), c) -> (
-    match D.query c ~sql ~params ~columns with
-    | Ok rows -> Ok rows
-    | Error (d : Driver.error) ->
-      Error
-        (Error.Execute
-           { query = name; sql; message = d.Driver.message; sqlstate = d.Driver.sqlstate
-           ; detail = d.Driver.detail; hint = d.Driver.hint
-           ; constraint_name = d.Driver.constraint_name; table_name = d.Driver.table_name
-           ; column_name = d.Driver.column_name }))
+      match D.query c ~sql ~params ~columns with
+      | Ok rows -> Ok rows
+      | Error (d : Driver.error) ->
+          Error
+            (Error.Execute
+               {
+                 query = name;
+                 sql;
+                 message = d.Driver.message;
+                 sqlstate = d.Driver.sqlstate;
+                 detail = d.Driver.detail;
+                 hint = d.Driver.hint;
+                 constraint_name = d.Driver.constraint_name;
+                 table_name = d.Driver.table_name;
+                 column_name = d.Driver.column_name;
+               }))
 
-let fetch_all (module Q : Query.MANY) (conn : conn) (p : Q.params) : (Q.row list, Error.t) result =
-  match run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns with
+let fetch_all (module Q : Query.MANY) (conn : conn) (p : Q.params) :
+    (Q.row list, Error.t) result =
+  match
+    run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns
+  with
   | Error e -> Error e
-  | Ok rows -> (
-    try Ok (List.map Q.decode rows) with e -> Error (decode_fail Q.name e))
+  | Ok rows -> ( try Ok (List.map Q.decode rows) with e -> Error (decode_fail Q.name e))
 
-let fetch_one (module Q : Query.ONE) (conn : conn) (p : Q.params) : (Q.row option, Error.t) result =
-  match run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns with
+let fetch_one (module Q : Query.ONE) (conn : conn) (p : Q.params) :
+    (Q.row option, Error.t) result =
+  match
+    run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns
+  with
   | Error e -> Error e
   | Ok [] -> Ok None
   | Ok [ r ] -> ( try Ok (Some (Q.decode r)) with e -> Error (decode_fail Q.name e))
   | Ok rows ->
-    Error (Error.Cardinality { query = Q.name; expected = "at most 1"; got = List.length rows })
+      Error
+        (Error.Cardinality
+           { query = Q.name; expected = "at most 1"; got = List.length rows })
 
 let exec (module Q : Query.EXEC) (conn : conn) (p : Q.params) : (int, Error.t) result =
   match conn with
   | Driver.Conn ((module D), c) -> (
-    match D.exec c ~sql:Q.sql ~params:(Q.encode p) with
-    | Ok n -> Ok n
-    | Error (d : Driver.error) ->
-      Error
-        (Error.Execute
-           { query = Q.name; sql = Q.sql; message = d.Driver.message
-           ; sqlstate = d.Driver.sqlstate; detail = d.Driver.detail; hint = d.Driver.hint
-           ; constraint_name = d.Driver.constraint_name; table_name = d.Driver.table_name
-           ; column_name = d.Driver.column_name }))
+      match D.exec c ~sql:Q.sql ~params:(Q.encode p) with
+      | Ok n -> Ok n
+      | Error (d : Driver.error) ->
+          Error
+            (Error.Execute
+               {
+                 query = Q.name;
+                 sql = Q.sql;
+                 message = d.Driver.message;
+                 sqlstate = d.Driver.sqlstate;
+                 detail = d.Driver.detail;
+                 hint = d.Driver.hint;
+                 constraint_name = d.Driver.constraint_name;
+                 table_name = d.Driver.table_name;
+                 column_name = d.Driver.column_name;
+               }))
 
 (* ---------- transactions ---------- *)
 
 let statement (conn : conn) sql =
   match conn with
   | Driver.Conn ((module D), c) -> (
-    match D.exec c ~sql ~params:[] with
-    | Ok _ -> Ok ()
-    | Error (d : Driver.error) ->
-      Error
-        (Error.Execute
-           { query = "transaction"; sql; message = d.Driver.message
-           ; sqlstate = d.Driver.sqlstate; detail = d.Driver.detail; hint = d.Driver.hint
-           ; constraint_name = d.Driver.constraint_name; table_name = d.Driver.table_name
-           ; column_name = d.Driver.column_name }))
+      match D.exec c ~sql ~params:[] with
+      | Ok _ -> Ok ()
+      | Error (d : Driver.error) ->
+          Error
+            (Error.Execute
+               {
+                 query = "transaction";
+                 sql;
+                 message = d.Driver.message;
+                 sqlstate = d.Driver.sqlstate;
+                 detail = d.Driver.detail;
+                 hint = d.Driver.hint;
+                 constraint_name = d.Driver.constraint_name;
+                 table_name = d.Driver.table_name;
+                 column_name = d.Driver.column_name;
+               }))
 
 (* Commits when [f] returns [Ok], rolls back when it returns [Error] or raises.
    An exception is re-raised after the rollback, so [_exn] query functions work
@@ -130,12 +159,12 @@ let transaction (conn : conn) f =
   match statement conn "BEGIN" with
   | Error e -> Error e
   | Ok () -> (
-    let tx = conn in
-    match f tx with
-    | Ok v -> (match statement conn "COMMIT" with Ok () -> Ok v | Error e -> Error e)
-    | Error e ->
-      ignore (statement conn "ROLLBACK");
-      Error e
-    | exception e ->
-      ignore (statement conn "ROLLBACK");
-      raise e)
+      let tx = conn in
+      match f tx with
+      | Ok v -> ( match statement conn "COMMIT" with Ok () -> Ok v | Error e -> Error e)
+      | Error e ->
+          ignore (statement conn "ROLLBACK");
+          Error e
+      | exception e ->
+          ignore (statement conn "ROLLBACK");
+          raise e)

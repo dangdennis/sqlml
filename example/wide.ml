@@ -2,11 +2,7 @@
 
 [@@@warning "-69"]
 
-type user_status =
-  | Active
-  | Invited
-  | Suspended
-  | Banned
+type user_status = Active | Invited | Suspended | Banned
 
 let user_status_of_row r i =
   match Sqlml.Row.string r i with
@@ -22,11 +18,7 @@ let user_status_to_value = function
   | Suspended -> Sqlml.Value.of_string "suspended"
   | Banned -> Sqlml.Value.of_string "banned"
 
-type user_role =
-  | Owner
-  | Admin
-  | Member
-  | Guest
+type user_role = Owner | Admin | Member | Guest
 
 let user_role_of_row r i =
   match Sqlml.Row.string r i with
@@ -44,61 +36,62 @@ let user_role_to_value = function
 
 (* ---------- GetUser ---------- *)
 
-type users_row =
-  { id : Uuidm.t
-  ; organization_id : Uuidm.t
-  ; email : string
-  ; email_verified_at : Ptime.t option
-  ; display_name : string option
-  ; given_name : string option
-  ; family_name : string option
-  ; avatar_url : string option
-  ; locale : string
-  ; timezone : string
-  ; status : user_status
-  ; role : user_role
-  ; balance : Decimal.t
-  ; credit_limit : Decimal.t option
-  ; login_count : int
-  ; failed_logins : int
-  ; last_login_at : Ptime.t option
-  ; last_seen_ip : string option
-  ; phone : string option
-  ; phone_verified : bool
-  ; marketing_opt_in : bool
-  ; metadata : string
-  ; created_at : Ptime.t
-  ; updated_at : Ptime.t
-  ; deleted_at : Ptime.t option
-  }
+type users_row = {
+  id : Uuidm.t;
+  organization_id : Uuidm.t;
+  email : string;
+  email_verified_at : Ptime.t option;
+  display_name : string option;
+  given_name : string option;
+  family_name : string option;
+  avatar_url : string option;
+  locale : string;
+  timezone : string;
+  status : user_status;
+  role : user_role;
+  balance : Decimal.t;
+  credit_limit : Decimal.t option;
+  login_count : int;
+  failed_logins : int;
+  last_login_at : Ptime.t option;
+  last_seen_ip : string option;
+  phone : string option;
+  phone_verified : bool;
+  marketing_opt_in : bool;
+  metadata : string;
+  created_at : Ptime.t;
+  updated_at : Ptime.t;
+  deleted_at : Ptime.t option;
+}
 
 let decode_user_columns r : users_row =
   let open Sqlml.Row in
-  { id = uuid r 0
-  ; organization_id = uuid r 1
-  ; email = string r 2
-  ; email_verified_at = (option ptime) r 3
-  ; display_name = (option string) r 4
-  ; given_name = (option string) r 5
-  ; family_name = (option string) r 6
-  ; avatar_url = (option string) r 7
-  ; locale = string r 8
-  ; timezone = string r 9
-  ; status = user_status_of_row r 10
-  ; role = user_role_of_row r 11
-  ; balance = decimal r 12
-  ; credit_limit = (option decimal) r 13
-  ; login_count = int r 14
-  ; failed_logins = int r 15
-  ; last_login_at = (option ptime) r 16
-  ; last_seen_ip = (option string) r 17
-  ; phone = (option string) r 18
-  ; phone_verified = bool r 19
-  ; marketing_opt_in = bool r 20
-  ; metadata = string r 21
-  ; created_at = ptime r 22
-  ; updated_at = ptime r 23
-  ; deleted_at = (option ptime) r 24
+  {
+    id = uuid r 0;
+    organization_id = uuid r 1;
+    email = string r 2;
+    email_verified_at = (option ptime) r 3;
+    display_name = (option string) r 4;
+    given_name = (option string) r 5;
+    family_name = (option string) r 6;
+    avatar_url = (option string) r 7;
+    locale = string r 8;
+    timezone = string r 9;
+    status = user_status_of_row r 10;
+    role = user_role_of_row r 11;
+    balance = decimal r 12;
+    credit_limit = (option decimal) r 13;
+    login_count = int r 14;
+    failed_logins = int r 15;
+    last_login_at = (option ptime) r 16;
+    last_seen_ip = (option string) r 17;
+    phone = (option string) r 18;
+    phone_verified = bool r 19;
+    marketing_opt_in = bool r 20;
+    metadata = string r 21;
+    created_at = ptime r 22;
+    updated_at = ptime r 23;
+    deleted_at = (option ptime) r 24;
   }
 
 let user_columns =
@@ -116,9 +109,7 @@ module Get_user = struct
   let sql = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE id = $1"
   let encode ({ id } : params) = [ Sqlml.Value.of_uuid id ]
   let decode = decode_user_columns
-
   let columns = 25
-
   let cardinality = Sqlml.Query.One
 end
 
@@ -135,9 +126,7 @@ module Get_user_by_email = struct
   let sql = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE email = $1"
   let encode ({ email } : params) = [ Sqlml.Value.of_string email ]
   let decode = decode_user_columns
-
   let columns = 25
-
   let cardinality = Sqlml.Query.One
 end
 
@@ -148,19 +137,15 @@ let get_user_by_email_exn conn ~email = Sqlml.or_raise (get_user_by_email conn ~
 
 (* ---------- ListUserSummaries ---------- *)
 
-type list_user_summaries_row =
-  { id : Uuidm.t
-  ; email : string
-  ; display_name : string option
-  ; status : user_status
-  }
+type list_user_summaries_row = {
+  id : Uuidm.t;
+  email : string;
+  display_name : string option;
+  status : user_status;
+}
 
 module List_user_summaries = struct
-  type params =
-    { organization_id : Uuidm.t
-    ; limit : int
-    }
-
+  type params = { organization_id : Uuidm.t; limit : int }
   type row = list_user_summaries_row
 
   let name = "ListUserSummaries"
@@ -176,19 +161,22 @@ module List_user_summaries = struct
     Sqlml.Value.[ of_uuid organization_id; of_int limit ]
 
   let decode r : row =
-    { id = Sqlml.Row.uuid r 0
-    ; email = Sqlml.Row.string r 1
-    ; display_name = Sqlml.Row.(option string) r 2
-    ; status = user_status_of_row r 3
+    {
+      id = Sqlml.Row.uuid r 0;
+      email = Sqlml.Row.string r 1;
+      display_name = Sqlml.Row.(option string) r 2;
+      status = user_status_of_row r 3;
     }
 
   let columns = 4
-
   let cardinality = Sqlml.Query.Many
 end
 
 let list_user_summaries conn ~organization_id ~limit =
-  Sqlml.fetch_all (module List_user_summaries) conn { List_user_summaries.organization_id; limit }
+  Sqlml.fetch_all
+    (module List_user_summaries)
+    conn
+    { List_user_summaries.organization_id; limit }
 
 let list_user_summaries_exn conn ~organization_id ~limit =
   Sqlml.or_raise (list_user_summaries conn ~organization_id ~limit)
@@ -196,20 +184,20 @@ let list_user_summaries_exn conn ~organization_id ~limit =
 (* ---------- CreateUser ---------- *)
 
 module Create_user = struct
-  type params =
-    { organization_id : Uuidm.t
-    ; email : string
-    ; display_name : string option
-    ; given_name : string option
-    ; family_name : string option
-    ; locale : string
-    ; timezone : string
-    ; status : user_status
-    ; role : user_role
-    ; phone : string option
-    ; marketing_opt_in : bool
-    ; metadata : string
-    }
+  type params = {
+    organization_id : Uuidm.t;
+    email : string;
+    display_name : string option;
+    given_name : string option;
+    family_name : string option;
+    locale : string;
+    timezone : string;
+    status : user_status;
+    role : user_role;
+    phone : string option;
+    marketing_opt_in : bool;
+    metadata : string;
+  }
 
   let name = "CreateUser"
 
@@ -221,18 +209,19 @@ module Create_user = struct
 
   let encode (p : params) =
     let open Sqlml.Value in
-    [ of_uuid p.organization_id
-    ; of_string p.email
-    ; of_option of_string p.display_name
-    ; of_option of_string p.given_name
-    ; of_option of_string p.family_name
-    ; of_string p.locale
-    ; of_string p.timezone
-    ; user_status_to_value p.status
-    ; user_role_to_value p.role
-    ; of_option of_string p.phone
-    ; of_bool p.marketing_opt_in
-    ; of_string p.metadata
+    [
+      of_uuid p.organization_id;
+      of_string p.email;
+      of_option of_string p.display_name;
+      of_option of_string p.given_name;
+      of_option of_string p.family_name;
+      of_string p.locale;
+      of_string p.timezone;
+      user_status_to_value p.status;
+      user_role_to_value p.role;
+      of_option of_string p.phone;
+      of_bool p.marketing_opt_in;
+      of_string p.metadata;
     ]
 
   let cardinality = Sqlml.Query.Exec
@@ -240,23 +229,26 @@ end
 
 let create_user conn ~organization_id ~email ~locale ~timezone ~status ~role
     ~marketing_opt_in ~metadata ?display_name ?given_name ?family_name ?phone () =
-  Sqlml.exec (module Create_user) conn
-    { Create_user.organization_id
-    ; email
-    ; display_name
-    ; given_name
-    ; family_name
-    ; locale
-    ; timezone
-    ; status
-    ; role
-    ; phone
-    ; marketing_opt_in
-    ; metadata
+  Sqlml.exec
+    (module Create_user)
+    conn
+    {
+      Create_user.organization_id;
+      email;
+      display_name;
+      given_name;
+      family_name;
+      locale;
+      timezone;
+      status;
+      role;
+      phone;
+      marketing_opt_in;
+      metadata;
     }
 
 let create_user_exn conn ~organization_id ~email ~locale ~timezone ~status ~role
     ~marketing_opt_in ~metadata ?display_name ?given_name ?family_name ?phone () =
   Sqlml.or_raise
-    (create_user conn ~organization_id ~email ~locale ~timezone ~status ~role ~marketing_opt_in
-       ~metadata ?display_name ?given_name ?family_name ?phone ())
+    (create_user conn ~organization_id ~email ~locale ~timezone ~status ~role
+       ~marketing_opt_in ~metadata ?display_name ?given_name ?family_name ?phone ())

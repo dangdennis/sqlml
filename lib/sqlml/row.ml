@@ -1,18 +1,19 @@
 (** Positional row decoders used by generated code.
 
-   Generated decoders read like the SELECT list they came from:
+    Generated decoders read like the SELECT list they came from:
 
-   {[
-     let decode r =
-       { id = Row.int r 0
-       ; email = Row.string r 1
-       ; created_at = Row.ptime r 2
-       ; display_name = Row.(option string) r 3
-       }
-   ]}
+    {[
+    let decode r =
+      {
+        id = Row.int r 0;
+        email = Row.string r 1;
+        created_at = Row.ptime r 2;
+        display_name = Row.(option string) r 3;
+      }
+    ]}
 
-   Decoders raise [Bad] rather than returning a result so generated code stays
-   flat; [Exec] catches it and turns it into [Error.Decode]. *)
+    Decoders raise [Bad] rather than returning a result so generated code stays flat;
+    [Exec] catches it and turns it into [Error.Decode]. *)
 
 type t = Value.t array
 
@@ -30,7 +31,9 @@ let get (r : t) i =
 let int r i =
   match get r i with
   | Value.Int n -> n
-  | Value.Text s -> (try int_of_string s with _ -> raise (Bad { column = i; expected = "int"; got = s }))
+  | Value.Text s -> (
+      try int_of_string s
+      with _ -> raise (Bad { column = i; expected = "int"; got = s }))
   | v -> bad i "int" v
 
 let bool r i =
@@ -39,14 +42,19 @@ let bool r i =
   | Value.Text ("t" | "true" | "TRUE" | "y" | "1") -> true
   | Value.Text ("f" | "false" | "FALSE" | "n" | "0") -> false
   | v -> bad i "bool" v
+
 let string r i = match get r i with Value.Text s -> s | v -> bad i "text" v
-let octets r i = match get r i with Value.Octets s | Value.Text s -> s | v -> bad i "octets" v
+
+let octets r i =
+  match get r i with Value.Octets s | Value.Text s -> s | v -> bad i "octets" v
 
 let float r i =
   match get r i with
   | Value.Float f -> f
   | Value.Int n -> float_of_int n
-  | Value.Text s -> (try float_of_string s with _ -> raise (Bad { column = i; expected = "float"; got = s }))
+  | Value.Text s -> (
+      try float_of_string s
+      with _ -> raise (Bad { column = i; expected = "float"; got = s }))
   | v -> bad i "float" v
 
 (* [option] wraps another decoder: [Row.(option string) r 3] *)
@@ -66,8 +74,12 @@ let normalize_timestamp s =
   (try
      for i = n - 1 downto 10 do
        match s.[i] with
-       | '+' | '-' -> tz := `At i; raise Exit
-       | 'Z' | 'z' -> tz := `Zulu; raise Exit
+       | '+' | '-' ->
+           tz := `At i;
+           raise Exit
+       | 'Z' | 'z' ->
+           tz := `Zulu;
+           raise Exit
        | _ -> ()
      done
    with Exit -> ());
@@ -75,39 +87,39 @@ let normalize_timestamp s =
   | `Zulu -> s
   | `None -> s ^ "Z"
   | `At i -> (
-    match n - i with
-    | 3 -> s ^ ":00" (* +00    *)
-    | 5 -> String.sub s 0 (i + 3) ^ ":" ^ String.sub s (i + 3) 2 (* +0000  *)
-    | _ -> s (* +00:00 *))
+      match n - i with
+      | 3 -> s ^ ":00" (* +00    *)
+      | 5 -> String.sub s 0 (i + 3) ^ ":" ^ String.sub s (i + 3) 2 (* +0000  *)
+      | _ -> s (* +00:00 *))
 
 let ptime r i =
   match get r i with
   | Value.Text s -> (
-    match Ptime.of_rfc3339 ~strict:false (normalize_timestamp s) with
-    | Ok (t, _, _) -> t
-    | Error _ -> raise (Bad { column = i; expected = "timestamp"; got = s }))
+      match Ptime.of_rfc3339 ~strict:false (normalize_timestamp s) with
+      | Ok (t, _, _) -> t
+      | Error _ -> raise (Bad { column = i; expected = "timestamp"; got = s }))
   | v -> bad i "timestamp" v
 
 let uuid r i =
   match get r i with
   | Value.Text s -> (
-    match Uuidm.of_string s with
-    | Some u -> u
-    | None -> raise (Bad { column = i; expected = "uuid"; got = s }))
+      match Uuidm.of_string s with
+      | Some u -> u
+      | None -> raise (Bad { column = i; expected = "uuid"; got = s }))
   | v -> bad i "uuid" v
 
 let json r i =
   match get r i with
   | Value.Text s -> (
-    try Yojson.Safe.from_string s
-    with _ -> raise (Bad { column = i; expected = "json"; got = s }))
+      try Yojson.Safe.from_string s
+      with _ -> raise (Bad { column = i; expected = "json"; got = s }))
   | v -> bad i "json" v
 
 let decimal r i =
   match get r i with
   | Value.Text s -> (
-    try Decimal.of_string s
-    with _ -> raise (Bad { column = i; expected = "numeric"; got = s }))
+      try Decimal.of_string s
+      with _ -> raise (Bad { column = i; expected = "numeric"; got = s }))
   | Value.Int n -> Decimal.of_int n
   | v -> bad i "numeric" v
 
@@ -127,7 +139,9 @@ module Elem = struct
   let bool s = match s with "t" | "true" | "TRUE" -> true | _ -> false
   let uuid s = match Uuidm.of_string s with Some u -> u | None -> failwith "uuid"
   let decimal s = Decimal.of_string s
-  let ptime s = match Ptime.of_rfc3339 ~strict:false (normalize_timestamp s) with
+
+  let ptime s =
+    match Ptime.of_rfc3339 ~strict:false (normalize_timestamp s) with
     | Ok (t, _, _) -> t
     | Error _ -> failwith "timestamp"
 
@@ -150,23 +164,39 @@ let parse_array_literal ~column s =
     let was_quoted = ref false in
     let flush () =
       let raw = Buffer.contents buf in
-      let v = if (not !was_quoted) && String.lowercase_ascii (String.trim raw) = "null" then None
-              else Some (if !was_quoted then raw else String.trim raw) in
+      let v =
+        if (not !was_quoted) && String.lowercase_ascii (String.trim raw) = "null" then
+          None
+        else Some (if !was_quoted then raw else String.trim raw)
+      in
       out := v :: !out;
       Buffer.clear buf;
       was_quoted := false
     in
     while !i < len do
       let c = inner.[!i] in
-      if !quoted then begin
-        if c = '\\' && !i + 1 < len then (Buffer.add_char buf inner.[!i + 1]; i := !i + 2)
-        else if c = '"' then (quoted := false; incr i)
-        else (Buffer.add_char buf c; incr i)
-      end
-      else if c = '"' then (quoted := true; was_quoted := true; incr i)
+      if !quoted then
+        begin if c = '\\' && !i + 1 < len then (
+          Buffer.add_char buf inner.[!i + 1];
+          i := !i + 2)
+        else if c = '"' then (
+          quoted := false;
+          incr i)
+        else (
+          Buffer.add_char buf c;
+          incr i)
+        end
+      else if c = '"' then (
+        quoted := true;
+        was_quoted := true;
+        incr i)
       else if c = '{' then bad "multidimensional arrays are not supported"
-      else if c = ',' then (flush (); incr i)
-      else (Buffer.add_char buf c; incr i)
+      else if c = ',' then (
+        flush ();
+        incr i)
+      else (
+        Buffer.add_char buf c;
+        incr i)
     done;
     flush ();
     List.rev !out
@@ -178,10 +208,11 @@ let parse_array_literal ~column s =
 let list parse r i =
   match get r i with
   | Value.Text s ->
-    parse_array_literal ~column:i s
-    |> List.map (function
-         | None -> raise (Bad { column = i; expected = "non-null array element"; got = "NULL" })
-         | Some e -> (
-           try parse e
-           with _ -> raise (Bad { column = i; expected = "array element"; got = e })))
+      parse_array_literal ~column:i s
+      |> List.map (function
+        | None ->
+            raise (Bad { column = i; expected = "non-null array element"; got = "NULL" })
+        | Some e -> (
+            try parse e
+            with _ -> raise (Bad { column = i; expected = "array element"; got = e })))
   | v -> bad i "array" v

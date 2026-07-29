@@ -2,232 +2,248 @@
 
    Regenerate with: sqlml generate *)
 
-type user_status =
-  | Active
-  | Banned
+type user_status = Active | Banned
 
 val user_status_to_string : user_status -> string
 
-type count_users_by_status_row =
-  { status : user_status
-  ; n : int
-  }
+type count_users_by_status_row = { status : user_status; n : int }
 
-type get_user_row =
-  { id : Uuidm.t
-  ; email : string
-  ; display_name : string option
-  ; status : user_status
-  ; balance : Decimal.t
-  ; created_at : Ptime.t
-  }
+type get_user_row = {
+  id : Uuidm.t;
+  email : string;
+  display_name : string option;
+  status : user_status;
+  balance : Decimal.t;
+  created_at : Ptime.t;
+}
 
-type search_users_row =
-  { id : Uuidm.t
-  ; email : string
-  ; created_at : Ptime.t
-  }
+type search_users_row = { id : Uuidm.t; email : string; created_at : Ptime.t }
+type count_posts_by_user_row = { email : string; title : string option; post_count : int }
 
-type count_posts_by_user_row =
-  { email : string
-  ; title : string option
-  ; post_count : int
-  }
+type users_row = {
+  id : Uuidm.t;
+  organization_id : Uuidm.t;
+  email : string;
+  display_name : string option;
+  status : user_status;
+  balance : Decimal.t;
+  created_at : Ptime.t;
+}
 
-type users_row =
-  { id : Uuidm.t
-  ; organization_id : Uuidm.t
-  ; email : string
-  ; display_name : string option
-  ; status : user_status
-  ; balance : Decimal.t
-  ; created_at : Ptime.t
-  }
+type get_users_by_ids_row = { id : Uuidm.t; email : string }
 
-type get_users_by_ids_row =
-  { id : Uuidm.t
-  ; email : string
-  }
-
-type get_tag_set_row =
-  { tags : string list
-  ; scores : int list
-  ; states : user_status list
-  ; meta : Yojson.Safe.t
-  }
+type get_tag_set_row = {
+  tags : string list;
+  scores : int list;
+  states : user_status list;
+  meta : Yojson.Safe.t;
+}
 
 module Count_users_by_status : sig
   type params = unit
 
-  include Sqlml.Query.MANY with type params := params and type row = count_users_by_status_row
+  include
+    Sqlml.Query.MANY with type params := params and type row = count_users_by_status_row
 end
 
+val count_users_by_status :
+  Sqlml.conn -> (count_users_by_status_row list, Sqlml.Error.t) result
 (** In a subdirectory, to prove discovery recurses. *)
-val count_users_by_status : Sqlml.conn -> (count_users_by_status_row list, Sqlml.Error.t) result
 
+val count_users_by_status_exn : Sqlml.conn -> count_users_by_status_row list
 (** Raising {!count_users_by_status}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val count_users_by_status_exn : Sqlml.conn -> count_users_by_status_row list
 
 module Get_user : sig
-  type params =
-    { id : Uuidm.t
-    }
+  type params = { id : Uuidm.t }
 
   include Sqlml.Query.ONE with type params := params and type row = get_user_row
 end
 
-(** Fetch a single user by id. *)
 val get_user : Sqlml.conn -> id:Uuidm.t -> (get_user_row option, Sqlml.Error.t) result
+(** Fetch a single user by id. *)
 
+val get_user_exn : Sqlml.conn -> id:Uuidm.t -> get_user_row option
 (** Raising {!get_user}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val get_user_exn : Sqlml.conn -> id:Uuidm.t -> get_user_row option
 
 module Search_users : sig
-  type params =
-    { organization_id : Uuidm.t
-    ; email_pattern : string
-    ; limit : int
-    }
+  type params = { organization_id : Uuidm.t; email_pattern : string; limit : int }
 
   include Sqlml.Query.MANY with type params := params and type row = search_users_row
 end
 
+val search_users :
+  Sqlml.conn ->
+  organization_id:Uuidm.t ->
+  email_pattern:string ->
+  limit:int ->
+  (search_users_row list, Sqlml.Error.t) result
 (** Users in an organization whose email matches a pattern, newest first. *)
-val search_users : Sqlml.conn -> organization_id:Uuidm.t -> email_pattern:string -> limit:int -> (search_users_row list, Sqlml.Error.t) result
 
+val search_users_exn :
+  Sqlml.conn ->
+  organization_id:Uuidm.t ->
+  email_pattern:string ->
+  limit:int ->
+  search_users_row list
 (** Raising {!search_users}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val search_users_exn : Sqlml.conn -> organization_id:Uuidm.t -> email_pattern:string -> limit:int -> search_users_row list
 
 module Count_posts_by_user : sig
   type params = unit
 
-  include Sqlml.Query.MANY with type params := params and type row = count_posts_by_user_row
+  include
+    Sqlml.Query.MANY with type params := params and type row = count_posts_by_user_row
 end
 
-(** Shows both nullability edge cases at once. posts.title is NOT NULL in the
-    schema but nullable here because of the LEFT JOIN, so attnotnull alone would
-    get it wrong. count(...) is a computed column with no origin, so Postgres
-    reports nothing and the "!" alias pins it to non-null. *)
-val count_posts_by_user : Sqlml.conn -> (count_posts_by_user_row list, Sqlml.Error.t) result
+val count_posts_by_user :
+  Sqlml.conn -> (count_posts_by_user_row list, Sqlml.Error.t) result
+(** Shows both nullability edge cases at once. posts.title is NOT NULL in the schema but
+    nullable here because of the LEFT JOIN, so attnotnull alone would get it wrong.
+    count(...) is a computed column with no origin, so Postgres reports nothing and the
+    "!" alias pins it to non-null. *)
 
+val count_posts_by_user_exn : Sqlml.conn -> count_posts_by_user_row list
 (** Raising {!count_posts_by_user}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val count_posts_by_user_exn : Sqlml.conn -> count_posts_by_user_row list
 
 module Delete_user : sig
-  type params =
-    { id : Uuidm.t
-    }
+  type params = { id : Uuidm.t }
 
   include Sqlml.Query.EXEC with type params := params
 end
 
 val delete_user : Sqlml.conn -> id:Uuidm.t -> (int, Sqlml.Error.t) result
 
+val delete_user_exn : Sqlml.conn -> id:Uuidm.t -> int
 (** Raising {!delete_user}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val delete_user_exn : Sqlml.conn -> id:Uuidm.t -> int
 
 module Get_user_full : sig
-  type params =
-    { id : Uuidm.t
-    }
+  type params = { id : Uuidm.t }
 
   include Sqlml.Query.ONE with type params := params and type row = users_row
 end
 
-(** Selects every column of users, so it should share the model type. *)
 val get_user_full : Sqlml.conn -> id:Uuidm.t -> (users_row option, Sqlml.Error.t) result
+(** Selects every column of users, so it should share the model type. *)
 
+val get_user_full_exn : Sqlml.conn -> id:Uuidm.t -> users_row option
 (** Raising {!get_user_full}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val get_user_full_exn : Sqlml.conn -> id:Uuidm.t -> users_row option
 
 module Set_display_name : sig
-  type params =
-    { display_name : string option
-    ; id : Uuidm.t
-    }
+  type params = { display_name : string option; id : Uuidm.t }
 
   include Sqlml.Query.EXEC with type params := params
 end
 
-(** display_name is nullable, so it becomes an optional argument and the
-    generated function takes a trailing (). *)
-val set_display_name : Sqlml.conn -> id:Uuidm.t -> ?display_name:string -> unit -> (int, Sqlml.Error.t) result
+val set_display_name :
+  Sqlml.conn -> id:Uuidm.t -> ?display_name:string -> unit -> (int, Sqlml.Error.t) result
+(** display_name is nullable, so it becomes an optional argument and the generated
+    function takes a trailing (). *)
 
+val set_display_name_exn : Sqlml.conn -> id:Uuidm.t -> ?display_name:string -> unit -> int
 (** Raising {!set_display_name}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val set_display_name_exn : Sqlml.conn -> id:Uuidm.t -> ?display_name:string -> unit -> int
 
 module Create_user : sig
-  type params =
-    { id : Uuidm.t
-    ; organization_id : Uuidm.t
-    ; email : string
-    ; display_name : string option
-    ; status : user_status
-    ; balance : Decimal.t
-    }
+  type params = {
+    id : Uuidm.t;
+    organization_id : Uuidm.t;
+    email : string;
+    display_name : string option;
+    status : user_status;
+    balance : Decimal.t;
+  }
 
   include Sqlml.Query.EXEC with type params := params
 end
 
+val create_user :
+  Sqlml.conn ->
+  id:Uuidm.t ->
+  organization_id:Uuidm.t ->
+  email:string ->
+  status:user_status ->
+  balance:Decimal.t ->
+  ?display_name:string ->
+  unit ->
+  (int, Sqlml.Error.t) result
 (** display_name is nullable, so it becomes an optional argument. *)
-val create_user : Sqlml.conn -> id:Uuidm.t -> organization_id:Uuidm.t -> email:string -> status:user_status -> balance:Decimal.t -> ?display_name:string -> unit -> (int, Sqlml.Error.t) result
 
+val create_user_exn :
+  Sqlml.conn ->
+  id:Uuidm.t ->
+  organization_id:Uuidm.t ->
+  email:string ->
+  status:user_status ->
+  balance:Decimal.t ->
+  ?display_name:string ->
+  unit ->
+  int
 (** Raising {!create_user}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val create_user_exn : Sqlml.conn -> id:Uuidm.t -> organization_id:Uuidm.t -> email:string -> status:user_status -> balance:Decimal.t -> ?display_name:string -> unit -> int
 
 module Get_users_by_ids : sig
-  type params =
-    { ids : Uuidm.t list
-    }
+  type params = { ids : Uuidm.t list }
 
   include Sqlml.Query.MANY with type params := params and type row = get_users_by_ids_row
 end
 
+val get_users_by_ids :
+  Sqlml.conn -> ids:Uuidm.t list -> (get_users_by_ids_row list, Sqlml.Error.t) result
 (** An array parameter: = ANY(...) is how you write a dynamic IN list. *)
-val get_users_by_ids : Sqlml.conn -> ids:Uuidm.t list -> (get_users_by_ids_row list, Sqlml.Error.t) result
 
+val get_users_by_ids_exn : Sqlml.conn -> ids:Uuidm.t list -> get_users_by_ids_row list
 (** Raising {!get_users_by_ids}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val get_users_by_ids_exn : Sqlml.conn -> ids:Uuidm.t list -> get_users_by_ids_row list
 
 module Put_tag_set : sig
-  type params =
-    { id : Uuidm.t
-    ; owner : Uuidm.t
-    ; tags : string list
-    ; scores : int list
-    ; states : user_status list
-    ; meta : Yojson.Safe.t
-    }
+  type params = {
+    id : Uuidm.t;
+    owner : Uuidm.t;
+    tags : string list;
+    scores : int list;
+    states : user_status list;
+    meta : Yojson.Safe.t;
+  }
 
   include Sqlml.Query.EXEC with type params := params
 end
 
-val put_tag_set : Sqlml.conn -> id:Uuidm.t -> owner:Uuidm.t -> tags:string list -> scores:int list -> states:user_status list -> meta:Yojson.Safe.t -> (int, Sqlml.Error.t) result
+val put_tag_set :
+  Sqlml.conn ->
+  id:Uuidm.t ->
+  owner:Uuidm.t ->
+  tags:string list ->
+  scores:int list ->
+  states:user_status list ->
+  meta:Yojson.Safe.t ->
+  (int, Sqlml.Error.t) result
 
+val put_tag_set_exn :
+  Sqlml.conn ->
+  id:Uuidm.t ->
+  owner:Uuidm.t ->
+  tags:string list ->
+  scores:int list ->
+  states:user_status list ->
+  meta:Yojson.Safe.t ->
+  int
 (** Raising {!put_tag_set}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val put_tag_set_exn : Sqlml.conn -> id:Uuidm.t -> owner:Uuidm.t -> tags:string list -> scores:int list -> states:user_status list -> meta:Yojson.Safe.t -> int
 
 module Get_tag_set : sig
-  type params =
-    { id : Uuidm.t
-    }
+  type params = { id : Uuidm.t }
 
   include Sqlml.Query.ONE with type params := params and type row = get_tag_set_row
 end
 
-val get_tag_set : Sqlml.conn -> id:Uuidm.t -> (get_tag_set_row option, Sqlml.Error.t) result
+val get_tag_set :
+  Sqlml.conn -> id:Uuidm.t -> (get_tag_set_row option, Sqlml.Error.t) result
 
+val get_tag_set_exn : Sqlml.conn -> id:Uuidm.t -> get_tag_set_row option
 (** Raising {!get_tag_set}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val get_tag_set_exn : Sqlml.conn -> id:Uuidm.t -> get_tag_set_row option
-

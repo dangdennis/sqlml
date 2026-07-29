@@ -1,15 +1,15 @@
 (** PostgreSQL SQLSTATE codes.
 
-    Generated from [src/backend/utils/errcodes.txt] in the PostgreSQL source;
-    262 codes across 43 classes. The point is to let a caller act on a failure
-    rather than print it: retry a serialization failure, return 409 on a unique
-    violation, 400 on a check violation.
+    Generated from [src/backend/utils/errcodes.txt] in the PostgreSQL source; 262 codes
+    across 43 classes. The point is to let a caller act on a failure rather than print it:
+    retry a serialization failure, return 409 on a unique violation, 400 on a check
+    violation.
 
     {[
-      match Sqlml.Error.sqlstate e with
-      | Some s when Sqlml.Sqlstate.is_retryable s -> retry ()
-      | Some s when Sqlml.Sqlstate.is_unique_violation s -> conflict ()
-      | _ -> internal_error ()
+    match Sqlml.Error.sqlstate e with
+    | Some s when Sqlml.Sqlstate.is_retryable s -> retry ()
+    | Some s when Sqlml.Sqlstate.is_unique_violation s -> conflict ()
+    | _ -> internal_error ()
     ]} *)
 
 type t
@@ -21,8 +21,8 @@ val equal : t -> t -> bool
 val pp : Format.formatter -> t -> unit
 
 val name : t -> string
-(** Canonical condition name, e.g. ["unique_violation"]. The code itself for
-    anything PostgreSQL does not name. *)
+(** Canonical condition name, e.g. ["unique_violation"]. The code itself for anything
+    PostgreSQL does not name. *)
 
 (** {1 Conditions} *)
 

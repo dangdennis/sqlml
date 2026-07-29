@@ -1,47 +1,50 @@
 (** Turning described queries into OCaml source.
 
-   One module per queries directory (not per .sql file), so shared model types
-   work across files and callers need a single [open Db]. *)
+    One module per queries directory (not per .sql file), so shared model types work
+    across files and callers need a single [open Db]. *)
 
 let ( let* ) = Result.bind
 
-type field =
-  { fname : string
-  ; ftype : Typemap.t
-  ; ord : int (* attnum for a table column, 0 otherwise *)
-  }
+type field = {
+  fname : string;
+  ftype : Typemap.t;
+  ord : int; (* attnum for a table column, 0 otherwise *)
+}
 
 (* ---------- resolution ---------- *)
 
 let resolve_column (q : Parse.t) (c : Describe.column) =
   match
-    Typemap.of_pg ~type_name:c.Describe.type_name ~elem_type_name:c.Describe.elem_type_name
-      ~enum_labels:c.Describe.enum_labels ~nullable:c.Describe.nullable
+    Typemap.of_pg ~type_name:c.Describe.type_name
+      ~elem_type_name:c.Describe.elem_type_name ~enum_labels:c.Describe.enum_labels
+      ~nullable:c.Describe.nullable
   with
   | Some t -> Ok { fname = c.Describe.name; ftype = t; ord = c.Describe.table_col }
   | None ->
-    Error
-      (Printf.sprintf "%s:%d: %s: column %S has Postgres type %S, which sqlml has no mapping for"
-         q.Parse.file q.Parse.line q.Parse.name c.Describe.name c.Describe.type_name)
+      Error
+        (Printf.sprintf
+           "%s:%d: %s: column %S has Postgres type %S, which sqlml has no mapping for"
+           q.Parse.file q.Parse.line q.Parse.name c.Describe.name c.Describe.type_name)
 
 let resolve_param (q : Parse.t) (p : Describe.param) =
   match
-    Typemap.of_pg ~type_name:p.Describe.ptype_name ~elem_type_name:p.Describe.pelem_type_name
-      ~enum_labels:p.Describe.penum_labels ~nullable:p.Describe.pnullable
+    Typemap.of_pg ~type_name:p.Describe.ptype_name
+      ~elem_type_name:p.Describe.pelem_type_name ~enum_labels:p.Describe.penum_labels
+      ~nullable:p.Describe.pnullable
   with
   | Some t -> Ok { fname = p.Describe.pname; ftype = t; ord = 0 }
   | None ->
-    Error
-      (Printf.sprintf
-         "%s:%d: %s: parameter %S has Postgres type %S, which sqlml has no mapping for"
-         q.Parse.file q.Parse.line q.Parse.name p.Describe.pname p.Describe.ptype_name)
+      Error
+        (Printf.sprintf
+           "%s:%d: %s: parameter %S has Postgres type %S, which sqlml has no mapping for"
+           q.Parse.file q.Parse.line q.Parse.name p.Describe.pname p.Describe.ptype_name)
 
 let rec map_result f = function
   | [] -> Ok []
   | x :: tl ->
-    let* y = f x in
-    let* rest = map_result f tl in
-    Ok (y :: rest)
+      let* y = f x in
+      let* rest = map_result f tl in
+      Ok (y :: rest)
 
 (* Where a generated row type name came from, so a collision can say which two
    things collided rather than blaming the wrong one. *)
@@ -53,20 +56,22 @@ let describe_origin = function
   | From_table t -> Printf.sprintf "the shared model for table %s" t
   | From_query q -> Printf.sprintf "query %s" q
 
-type resolved =
-  { d : Describe.described
-  ; row_type : string option (* None for :exec *)
-  ; row_origin : origin option
-  ; shared : bool
-  ; cols : field list (* SELECT order -- decoders index by position *)
-  ; type_fields : field list (* order the record type is declared in *)
-  ; ps : field list
-  }
+type resolved = {
+  d : Describe.described;
+  row_type : string option (* None for :exec *);
+  row_origin : origin option;
+  shared : bool;
+  cols : field list (* SELECT order -- decoders index by position *);
+  type_fields : field list (* order the record type is declared in *);
+  ps : field list;
+}
 
 let row_type_name (d : Describe.described) =
   match d.Describe.model_table with
   | Some t -> (Parse.to_snake t ^ "_row", From_table t)
-  | None -> (Parse.to_snake d.Describe.query.Parse.name ^ "_row", From_query d.Describe.query.Parse.name)
+  | None ->
+      ( Parse.to_snake d.Describe.query.Parse.name ^ "_row",
+        From_query d.Describe.query.Parse.name )
 
 let resolve (d : Describe.described) =
   let q = d.Describe.query in
@@ -95,12 +100,12 @@ let collect_enums resolved =
     | Typemap.Enum (n, labels)
     | Typemap.Option (Typemap.Enum (n, labels))
     | Typemap.Array (Typemap.Enum (n, labels))
-    | Typemap.Option (Typemap.Array (Typemap.Enum (n, labels))) ->
-      (match Hashtbl.find_opt tbl n with
-       | Some existing when existing <> labels ->
-         (* same type name with different labels cannot happen from one database *)
-         ()
-       | _ -> Hashtbl.replace tbl n labels)
+    | Typemap.Option (Typemap.Array (Typemap.Enum (n, labels))) -> (
+        match Hashtbl.find_opt tbl n with
+        | Some existing when existing <> labels ->
+            (* same type name with different labels cannot happen from one database *)
+            ()
+        | _ -> Hashtbl.replace tbl n labels)
     | _ -> ()
   in
   List.iter
@@ -120,23 +125,25 @@ let collect_rows resolved =
   let rec go = function
     | [] -> Ok (List.rev !order)
     | r :: tl -> (
-      match (r.row_type, r.row_origin) with
-      | None, _ | _, None -> go tl
-      | Some name, Some origin -> (
-        match Hashtbl.find_opt seen name with
-        | None ->
-          Hashtbl.replace seen name (r.type_fields, origin);
-          order := (name, r.type_fields) :: !order;
-          go tl
-        (* same name, same fields: the shared model doing its job *)
-        | Some (prev, _) when prev = r.type_fields -> go tl
-        | Some (_, prev_origin) ->
-          Error
-            (Printf.sprintf
-               "%s:%d: row type %S is claimed by both %s and %s, with different fields.\n\
-               \  Rename the query, or select the table's full row so they share the model."
-               r.d.Describe.query.Parse.file r.d.Describe.query.Parse.line name
-               (describe_origin prev_origin) (describe_origin origin))))
+        match (r.row_type, r.row_origin) with
+        | None, _ | _, None -> go tl
+        | Some name, Some origin -> (
+            match Hashtbl.find_opt seen name with
+            | None ->
+                Hashtbl.replace seen name (r.type_fields, origin);
+                order := (name, r.type_fields) :: !order;
+                go tl
+            (* same name, same fields: the shared model doing its job *)
+            | Some (prev, _) when prev = r.type_fields -> go tl
+            | Some (_, prev_origin) ->
+                Error
+                  (Printf.sprintf
+                     "%s:%d: row type %S is claimed by both %s and %s, with different \
+                      fields.\n\
+                     \  Rename the query, or select the table's full row so they share \
+                      the model."
+                     r.d.Describe.query.Parse.file r.d.Describe.query.Parse.line name
+                     (describe_origin prev_origin) (describe_origin origin))))
   in
   go resolved
 
@@ -148,7 +155,9 @@ let emit_record b name fields =
   bprintf b "type %s =\n" name;
   List.iteri
     (fun i f ->
-      bprintf b "  %c %s : %s\n" (if i = 0 then '{' else ';') f.fname (Typemap.ocaml_type f.ftype))
+      bprintf b "  %c %s : %s\n"
+        (if i = 0 then '{' else ';')
+        f.fname (Typemap.ocaml_type f.ftype))
     fields;
   bprintf b "  }\n\n"
 
@@ -201,27 +210,33 @@ let emit_signature b r =
   let m = mod_name r in
   let q = r.d.Describe.query in
   bprintf b "module %s : sig\n" m;
-  (if r.ps = [] then bprintf b "  type params = unit\n\n"
-   else begin
-     bprintf b "  type params =\n";
-     List.iteri
-       (fun i f ->
-         bprintf b "    %c %s : %s\n" (if i = 0 then '{' else ';') f.fname
-           (Typemap.ocaml_type f.ftype))
-       r.ps;
-     bprintf b "    }\n\n"
-   end);
+  if r.ps = [] then bprintf b "  type params = unit\n\n"
+  else begin
+    bprintf b "  type params =\n";
+    List.iteri
+      (fun i f ->
+        bprintf b "    %c %s : %s\n"
+          (if i = 0 then '{' else ';')
+          f.fname (Typemap.ocaml_type f.ftype))
+      r.ps;
+    bprintf b "    }\n\n"
+  end;
   (match r.row_type with
-   | Some row -> bprintf b "  include %s with type params := params and type row = %s\n" (query_sig r) row
-   | None -> bprintf b "  include %s with type params := params\n" (query_sig r));
+  | Some row ->
+      bprintf b "  include %s with type params := params and type row = %s\n"
+        (query_sig r) row
+  | None -> bprintf b "  include %s with type params := params\n" (query_sig r));
   bprintf b "end\n\n";
   let mandatory, optional = split_args r.ps in
   let args = List.map arg_sig (mandatory @ optional) in
   let args = if optional = [] then args else args @ [ "unit" ] in
   let chain = String.concat " -> " ("Sqlml.conn" :: args) in
   emit_doc b q;
-  bprintf b "val %s : %s -> (%s, Sqlml.Error.t) result\n\n" (fn_name r) chain (result_type r);
-  bprintf b "(** Raising {!%s}.\n    @raise Sqlml.Sql_error on connection, execution or decode failure. *)\n"
+  bprintf b "val %s : %s -> (%s, Sqlml.Error.t) result\n\n" (fn_name r) chain
+    (result_type r);
+  bprintf b
+    "(** Raising {!%s}.\n\
+    \    @raise Sqlml.Sql_error on connection, execution or decode failure. *)\n"
     (fn_name r);
   bprintf b "val %s_exn : %s -> %s\n\n" (fn_name r) chain (result_type r)
 
@@ -229,16 +244,17 @@ let emit_implementation b r =
   let m = mod_name r in
   let q = r.d.Describe.query in
   bprintf b "module %s = struct\n" m;
-  (if r.ps = [] then bprintf b "  type params = unit\n"
-   else begin
-     bprintf b "  type params =\n";
-     List.iteri
-       (fun i f ->
-         bprintf b "    %c %s : %s\n" (if i = 0 then '{' else ';') f.fname
-           (Typemap.ocaml_type f.ftype))
-       r.ps;
-     bprintf b "    }\n"
-   end);
+  if r.ps = [] then bprintf b "  type params = unit\n"
+  else begin
+    bprintf b "  type params =\n";
+    List.iteri
+      (fun i f ->
+        bprintf b "    %c %s : %s\n"
+          (if i = 0 then '{' else ';')
+          f.fname (Typemap.ocaml_type f.ftype))
+      r.ps;
+    bprintf b "    }\n"
+  end;
   (match r.row_type with Some row -> bprintf b "  type row = %s\n" row | None -> ());
   bprintf b "\n  let name = %S\n" q.Parse.name;
   bprintf b "  let sql = %S\n\n" q.Parse.sql;
@@ -249,28 +265,31 @@ let emit_implementation b r =
     bprintf b "  let encode (p : params) =\n";
     List.iteri
       (fun i f ->
-        bprintf b "    %c %s p.%s\n" (if i = 0 then '[' else ';') (Typemap.encoder f.ftype) f.fname)
+        bprintf b "    %c %s p.%s\n"
+          (if i = 0 then '[' else ';')
+          (Typemap.encoder f.ftype) f.fname)
       r.ps;
     bprintf b "    ]\n"
   end;
   (match r.row_type with
-   | None -> ()
-   | Some row ->
-     bprintf b "\n  let decode r : %s =\n" row;
-     List.iteri
-       (fun i f ->
-         bprintf b "    %c %s = %s r %d\n" (if i = 0 then '{' else ';') f.fname
-           (Typemap.decoder f.ftype) i)
-       r.cols;
-     bprintf b "    }\n");
+  | None -> ()
+  | Some row ->
+      bprintf b "\n  let decode r : %s =\n" row;
+      List.iteri
+        (fun i f ->
+          bprintf b "    %c %s = %s r %d\n"
+            (if i = 0 then '{' else ';')
+            f.fname (Typemap.decoder f.ftype) i)
+        r.cols;
+      bprintf b "    }\n");
   (match r.row_type with
-   | Some _ -> bprintf b "\n  let columns = %d\n" (List.length r.cols)
-   | None -> ());
+  | Some _ -> bprintf b "\n  let columns = %d\n" (List.length r.cols)
+  | None -> ());
   bprintf b "\n  let cardinality = %s\n"
     (match r.d.Describe.query.Parse.cardinality with
-     | Parse.One -> "Sqlml.Query.One"
-     | Parse.Many -> "Sqlml.Query.Many"
-     | Parse.Exec -> "Sqlml.Query.Exec");
+    | Parse.One -> "Sqlml.Query.One"
+    | Parse.Many -> "Sqlml.Query.Many"
+    | Parse.Exec -> "Sqlml.Query.Exec");
   bprintf b "end\n\n";
   let mandatory, optional = split_args r.ps in
   let all = mandatory @ optional in
@@ -280,18 +299,18 @@ let emit_implementation b r =
   let tail = if optional = [] then "" else " ()" in
   let param_value =
     if r.ps = [] then "()"
-    else
-      "{ " ^ m ^ "."
-      ^ String.concat "; " (List.map (fun f -> f.fname) r.ps)
-      ^ " }"
+    else "{ " ^ m ^ "." ^ String.concat "; " (List.map (fun f -> f.fname) r.ps) ^ " }"
   in
-  bprintf b "let %s conn%s%s = %s (module %s) conn %s\n" (fn_name r) uses tail (runner r) m param_value;
+  bprintf b "let %s conn%s%s = %s (module %s) conn %s\n" (fn_name r) uses tail (runner r)
+    m param_value;
   bprintf b "let %s_exn conn%s%s = Sqlml.or_raise (%s conn%s%s)\n\n" (fn_name r) uses tail
     (fn_name r) uses tail
 
 let header src =
   Printf.sprintf
-    "(* Generated by sqlml from %s -- do not edit.\n\n   Regenerate with: sqlml generate *)\n\n" src
+    "(* Generated by sqlml from %s -- do not edit.\n\n\
+    \   Regenerate with: sqlml generate *)\n\n"
+    src
 
 let generate ~src (described : Describe.described list) =
   let* resolved = map_result resolve described in
@@ -310,18 +329,23 @@ let generate ~src (described : Describe.described list) =
     (fun (name, labels) ->
       bprintf mli "val %s_to_string : %s -> string\n\n" name name;
       bprintf ml "let %s_to_string = function\n" name;
-      List.iter (fun l -> bprintf ml "  | %s -> %S\n" (Typemap.constructor_of_label l) l) labels;
+      List.iter
+        (fun l -> bprintf ml "  | %s -> %S\n" (Typemap.constructor_of_label l) l)
+        labels;
       bprintf ml "\n";
       bprintf ml "let %s_to_value x = Sqlml.Value.of_string (%s_to_string x)\n" name name;
       bprintf ml "let _ = %s_to_value\n\n" name;
       bprintf ml "let %s_of_string = function\n" name;
-      List.iter (fun l -> bprintf ml "  | %S -> %s\n" l (Typemap.constructor_of_label l)) labels;
+      List.iter
+        (fun l -> bprintf ml "  | %S -> %s\n" l (Typemap.constructor_of_label l))
+        labels;
       bprintf ml "  | o -> failwith (%S ^ \": \" ^ o)\n\n" name;
       bprintf ml "let %s_of_row r i =\n" name;
       bprintf ml "  let s = Sqlml.Row.string r i in\n";
       bprintf ml "  try %s_of_string s\n" name;
       bprintf ml
-        "  with _ -> raise (Sqlml.Row.Bad { column = i; expected = %S; got = s })\n\n" name)
+        "  with _ -> raise (Sqlml.Row.Bad { column = i; expected = %S; got = s })\n\n"
+        name)
     enums;
   List.iter
     (fun (name, fields) ->

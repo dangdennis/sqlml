@@ -1,6 +1,6 @@
 (** What a generated query module looks like from the runtime's point of view.
 
-   One module per named query in a .sql file. *)
+    One module per named query in a .sql file. *)
 
 (* Cardinality witnesses.
 
@@ -13,11 +13,7 @@
 type one = One_tag
 type many = Many_tag
 type exec = Exec_tag
-
-type _ card =
-  | One : one card
-  | Many : many card
-  | Exec : exec card
+type _ card = One : one card | Many : many card | Exec : exec card
 
 module type BASE = sig
   type params

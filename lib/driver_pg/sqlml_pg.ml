@@ -47,13 +47,13 @@ module Raw = struct
     match Pq.check (run conn sql params) with
     | Error e -> Error (of_diag e)
     | Ok r ->
-      Pq.with_result r (fun r ->
-          let cols = Pq.nfields r in
-          Ok
-            (List.init (Pq.ntuples r) (fun i ->
-                 Array.init cols (fun j ->
-                     if Pq.getisnull r i j then Sqlml.Value.Null
-                     else Sqlml.Value.Text (Pq.getvalue r i j)))))
+        Pq.with_result r (fun r ->
+            let cols = Pq.nfields r in
+            Ok
+              (List.init (Pq.ntuples r) (fun i ->
+                   Array.init cols (fun j ->
+                       if Pq.getisnull r i j then Sqlml.Value.Null
+                       else Sqlml.Value.Text (Pq.getvalue r i j)))))
 
   let exec conn ~sql ~params =
     match Pq.check (run conn sql params) with
@@ -67,27 +67,30 @@ let conninfo_of_env () =
   match Sys.getenv_opt "DATABASE_URL" with
   | Some u when String.trim u <> "" -> u
   | _ ->
-    let get k d = match Sys.getenv_opt k with Some v when v <> "" -> v | _ -> d in
-    Printf.sprintf "host=%s port=%s user=%s dbname=%s%s" (get "PGHOST" "127.0.0.1")
-      (get "PGPORT" "5432") (get "PGUSER" "postgres") (get "PGDATABASE" "postgres")
-      (match Sys.getenv_opt "PGPASSWORD" with Some p when p <> "" -> " password=" ^ p | _ -> "")
+      let get k d = match Sys.getenv_opt k with Some v when v <> "" -> v | _ -> d in
+      Printf.sprintf "host=%s port=%s user=%s dbname=%s%s" (get "PGHOST" "127.0.0.1")
+        (get "PGPORT" "5432") (get "PGUSER" "postgres") (get "PGDATABASE" "postgres")
+        (match Sys.getenv_opt "PGPASSWORD" with
+        | Some p when p <> "" -> " password=" ^ p
+        | _ -> "")
 
 let open_raw conninfo =
   let c = Pq.connect conninfo in
   if Pq.connect_ok c then Ok c
-  else (
+  else
     let m = String.trim (Pq.error_message c) in
     Pq.finish c;
-    Error (Sqlml.Error.Connect m))
+    Error (Sqlml.Error.Connect m)
 
 (* Does not close. Intended for a connection that lives as long as the process;
    use [with_connection] when the lifetime is scoped. *)
-let connect conninfo = Result.map (fun c -> Sqlml.Driver.make (module Raw) c) (open_raw conninfo)
+let connect conninfo =
+  Result.map (fun c -> Sqlml.Driver.make (module Raw) c) (open_raw conninfo)
 
 let with_connection conninfo f =
   match open_raw conninfo with
   | Error e -> Error e
   | Ok c ->
-    Fun.protect
-      ~finally:(fun () -> Pq.finish c)
-      (fun () -> Ok (f (Sqlml.Driver.make (module Raw) c)))
+      Fun.protect
+        ~finally:(fun () -> Pq.finish c)
+        (fun () -> Ok (f (Sqlml.Driver.make (module Raw) c)))

@@ -1,5 +1,5 @@
-(** PostgreSQL type to OCaml type, plus the decoder and encoder expressions the
-   emitter splices into generated code. *)
+(** PostgreSQL type to OCaml type, plus the decoder and encoder expressions the emitter
+    splices into generated code. *)
 
 type t =
   | Int

@@ -5,9 +5,7 @@
 
 [@@@warning "-69"]
 
-type user_status =
-  | Active
-  | Banned
+type user_status = Active | Banned
 
 let user_status_to_string = function Active -> "active" | Banned -> "banned"
 
@@ -18,19 +16,18 @@ let user_status_of_row r i =
   | other -> raise (Sqlml.Row.Bad { column = i; expected = "user_status"; got = other })
 
 let user_status_to_value s = Sqlml.Value.of_string (user_status_to_string s)
-
 let _ = user_status_to_value
 
 (* ---------- GetUser ---------- *)
 
-type get_user_row =
-  { id : Uuidm.t
-  ; email : string
-  ; display_name : string option
-  ; status : user_status
-  ; balance : Decimal.t
-  ; created_at : Ptime.t
-  }
+type get_user_row = {
+  id : Uuidm.t;
+  email : string;
+  display_name : string option;
+  status : user_status;
+  balance : Decimal.t;
+  created_at : Ptime.t;
+}
 
 module Get_user = struct
   type params = { id : Uuidm.t }
@@ -39,21 +36,23 @@ module Get_user = struct
   let name = "GetUser"
 
   let sql =
-    "SELECT id, email, display_name, status, balance, created_at\nFROM users\nWHERE id = $1"
+    "SELECT id, email, display_name, status, balance, created_at\n\
+     FROM users\n\
+     WHERE id = $1"
 
   let encode ({ id } : params) = [ Sqlml.Value.of_uuid id ]
 
   let decode r : row =
-    { id = Sqlml.Row.uuid r 0
-    ; email = Sqlml.Row.string r 1
-    ; display_name = Sqlml.Row.(option string) r 2
-    ; status = user_status_of_row r 3
-    ; balance = Sqlml.Row.decimal r 4
-    ; created_at = Sqlml.Row.ptime r 5
+    {
+      id = Sqlml.Row.uuid r 0;
+      email = Sqlml.Row.string r 1;
+      display_name = Sqlml.Row.(option string) r 2;
+      status = user_status_of_row r 3;
+      balance = Sqlml.Row.decimal r 4;
+      created_at = Sqlml.Row.ptime r 5;
     }
 
   let columns = 6
-
   let cardinality = Sqlml.Query.One
 end
 
@@ -62,19 +61,10 @@ let get_user_exn conn ~id = Sqlml.or_raise (get_user conn ~id)
 
 (* ---------- SearchUsers ---------- *)
 
-type search_users_row =
-  { id : Uuidm.t
-  ; email : string
-  ; created_at : Ptime.t
-  }
+type search_users_row = { id : Uuidm.t; email : string; created_at : Ptime.t }
 
 module Search_users = struct
-  type params =
-    { organization_id : Uuidm.t
-    ; email_pattern : string
-    ; limit : int
-    }
-
+  type params = { organization_id : Uuidm.t; email_pattern : string; limit : int }
   type row = search_users_row
 
   let name = "SearchUsers"
@@ -91,29 +81,28 @@ module Search_users = struct
     Sqlml.Value.[ of_uuid organization_id; of_string email_pattern; of_int limit ]
 
   let decode r : row =
-    { id = Sqlml.Row.uuid r 0
-    ; email = Sqlml.Row.string r 1
-    ; created_at = Sqlml.Row.ptime r 2
+    {
+      id = Sqlml.Row.uuid r 0;
+      email = Sqlml.Row.string r 1;
+      created_at = Sqlml.Row.ptime r 2;
     }
 
   let columns = 3
-
   let cardinality = Sqlml.Query.Many
 end
 
 let search_users conn ~organization_id ~email_pattern ~limit =
-  Sqlml.fetch_all (module Search_users) conn { Search_users.organization_id; email_pattern; limit }
+  Sqlml.fetch_all
+    (module Search_users)
+    conn
+    { Search_users.organization_id; email_pattern; limit }
 
 let search_users_exn conn ~organization_id ~email_pattern ~limit =
   Sqlml.or_raise (search_users conn ~organization_id ~email_pattern ~limit)
 
 (* ---------- CountPostsByUser ---------- *)
 
-type count_posts_by_user_row =
-  { email : string
-  ; title : string option
-  ; post_count : int
-  }
+type count_posts_by_user_row = { email : string; title : string option; post_count : int }
 
 module Count_posts_by_user = struct
   type params = unit
@@ -133,13 +122,13 @@ module Count_posts_by_user = struct
   let encode () = []
 
   let decode r : row =
-    { email = Sqlml.Row.string r 0
-    ; title = Sqlml.Row.(option string) r 1
-    ; post_count = Sqlml.Row.int r 2
+    {
+      email = Sqlml.Row.string r 0;
+      title = Sqlml.Row.(option string) r 1;
+      post_count = Sqlml.Row.int r 2;
     }
 
   let columns = 3
-
   let cardinality = Sqlml.Query.Many
 end
 
@@ -154,7 +143,6 @@ module Delete_user = struct
   let name = "DeleteUser"
   let sql = "DELETE FROM users WHERE id = $1"
   let encode ({ id } : params) = [ Sqlml.Value.of_uuid id ]
-
   let cardinality = Sqlml.Query.Exec
 end
 

@@ -4,14 +4,9 @@
 
 [@@@warning "-69"]
 
-type user_status =
-  | Active
-  | Banned
+type user_status = Active | Banned
 
-let user_status_to_string = function
-  | Active -> "active"
-  | Banned -> "banned"
-
+let user_status_to_string = function Active -> "active" | Banned -> "banned"
 let user_status_to_value x = Sqlml.Value.of_string (user_status_to_string x)
 let _ = user_status_to_value
 
@@ -25,53 +20,38 @@ let user_status_of_row r i =
   try user_status_of_string s
   with _ -> raise (Sqlml.Row.Bad { column = i; expected = "user_status"; got = s })
 
-type count_users_by_status_row =
-  { status : user_status
-  ; n : int
-  }
+type count_users_by_status_row = { status : user_status; n : int }
 
-type get_user_row =
-  { id : Uuidm.t
-  ; email : string
-  ; display_name : string option
-  ; status : user_status
-  ; balance : Decimal.t
-  ; created_at : Ptime.t
-  }
+type get_user_row = {
+  id : Uuidm.t;
+  email : string;
+  display_name : string option;
+  status : user_status;
+  balance : Decimal.t;
+  created_at : Ptime.t;
+}
 
-type search_users_row =
-  { id : Uuidm.t
-  ; email : string
-  ; created_at : Ptime.t
-  }
+type search_users_row = { id : Uuidm.t; email : string; created_at : Ptime.t }
+type count_posts_by_user_row = { email : string; title : string option; post_count : int }
 
-type count_posts_by_user_row =
-  { email : string
-  ; title : string option
-  ; post_count : int
-  }
+type users_row = {
+  id : Uuidm.t;
+  organization_id : Uuidm.t;
+  email : string;
+  display_name : string option;
+  status : user_status;
+  balance : Decimal.t;
+  created_at : Ptime.t;
+}
 
-type users_row =
-  { id : Uuidm.t
-  ; organization_id : Uuidm.t
-  ; email : string
-  ; display_name : string option
-  ; status : user_status
-  ; balance : Decimal.t
-  ; created_at : Ptime.t
-  }
+type get_users_by_ids_row = { id : Uuidm.t; email : string }
 
-type get_users_by_ids_row =
-  { id : Uuidm.t
-  ; email : string
-  }
-
-type get_tag_set_row =
-  { tags : string list
-  ; scores : int list
-  ; states : user_status list
-  ; meta : Yojson.Safe.t
-  }
+type get_tag_set_row = {
+  tags : string list;
+  scores : int list;
+  states : user_status list;
+  meta : Yojson.Safe.t;
+}
 
 module Count_users_by_status = struct
   type params = unit
@@ -79,16 +59,12 @@ module Count_users_by_status = struct
 
   let name = "CountUsersByStatus"
   let sql = "SELECT status, count(*) AS \"n!\" FROM users GROUP BY status"
-
   let encode () = []
 
   let decode r : count_users_by_status_row =
-    { status = user_status_of_row r 0
-    ; n = Sqlml.Row.int r 1
-    }
+    { status = user_status_of_row r 0; n = Sqlml.Row.int r 1 }
 
   let columns = 2
-
   let cardinality = Sqlml.Query.Many
 end
 
@@ -96,29 +72,29 @@ let count_users_by_status conn = Sqlml.fetch_all (module Count_users_by_status) 
 let count_users_by_status_exn conn = Sqlml.or_raise (count_users_by_status conn)
 
 module Get_user = struct
-  type params =
-    { id : Uuidm.t
-    }
+  type params = { id : Uuidm.t }
   type row = get_user_row
 
   let name = "GetUser"
-  let sql = "SELECT id, email, display_name, status, balance, created_at\nFROM users\nWHERE id = $1"
 
-  let encode (p : params) =
-    [ Sqlml.Value.of_uuid p.id
-    ]
+  let sql =
+    "SELECT id, email, display_name, status, balance, created_at\n\
+     FROM users\n\
+     WHERE id = $1"
+
+  let encode (p : params) = [ Sqlml.Value.of_uuid p.id ]
 
   let decode r : get_user_row =
-    { id = Sqlml.Row.uuid r 0
-    ; email = Sqlml.Row.string r 1
-    ; display_name = (Sqlml.Row.option Sqlml.Row.string) r 2
-    ; status = user_status_of_row r 3
-    ; balance = Sqlml.Row.decimal r 4
-    ; created_at = Sqlml.Row.ptime r 5
+    {
+      id = Sqlml.Row.uuid r 0;
+      email = Sqlml.Row.string r 1;
+      display_name = (Sqlml.Row.option Sqlml.Row.string) r 2;
+      status = user_status_of_row r 3;
+      balance = Sqlml.Row.decimal r 4;
+      created_at = Sqlml.Row.ptime r 5;
     }
 
   let columns = 6
-
   let cardinality = Sqlml.Query.One
 end
 
@@ -126,53 +102,71 @@ let get_user conn ~id = Sqlml.fetch_one (module Get_user) conn { Get_user.id }
 let get_user_exn conn ~id = Sqlml.or_raise (get_user conn ~id)
 
 module Search_users = struct
-  type params =
-    { organization_id : Uuidm.t
-    ; email_pattern : string
-    ; limit : int
-    }
+  type params = { organization_id : Uuidm.t; email_pattern : string; limit : int }
   type row = search_users_row
 
   let name = "SearchUsers"
-  let sql = "SELECT id, email, created_at\nFROM users\nWHERE organization_id = $1\n  AND email ILIKE $2\nORDER BY created_at DESC\nLIMIT $3"
+
+  let sql =
+    "SELECT id, email, created_at\n\
+     FROM users\n\
+     WHERE organization_id = $1\n\
+    \  AND email ILIKE $2\n\
+     ORDER BY created_at DESC\n\
+     LIMIT $3"
 
   let encode (p : params) =
-    [ Sqlml.Value.of_uuid p.organization_id
-    ; Sqlml.Value.of_string p.email_pattern
-    ; Sqlml.Value.of_int p.limit
+    [
+      Sqlml.Value.of_uuid p.organization_id;
+      Sqlml.Value.of_string p.email_pattern;
+      Sqlml.Value.of_int p.limit;
     ]
 
   let decode r : search_users_row =
-    { id = Sqlml.Row.uuid r 0
-    ; email = Sqlml.Row.string r 1
-    ; created_at = Sqlml.Row.ptime r 2
+    {
+      id = Sqlml.Row.uuid r 0;
+      email = Sqlml.Row.string r 1;
+      created_at = Sqlml.Row.ptime r 2;
     }
 
   let columns = 3
-
   let cardinality = Sqlml.Query.Many
 end
 
-let search_users conn ~organization_id ~email_pattern ~limit = Sqlml.fetch_all (module Search_users) conn { Search_users.organization_id; email_pattern; limit }
-let search_users_exn conn ~organization_id ~email_pattern ~limit = Sqlml.or_raise (search_users conn ~organization_id ~email_pattern ~limit)
+let search_users conn ~organization_id ~email_pattern ~limit =
+  Sqlml.fetch_all
+    (module Search_users)
+    conn
+    { Search_users.organization_id; email_pattern; limit }
+
+let search_users_exn conn ~organization_id ~email_pattern ~limit =
+  Sqlml.or_raise (search_users conn ~organization_id ~email_pattern ~limit)
 
 module Count_posts_by_user = struct
   type params = unit
   type row = count_posts_by_user_row
 
   let name = "CountPostsByUser"
-  let sql = "SELECT\n  u.email,\n  p.title AS \"title?\",\n  coalesce(count(p.id), 0) AS \"post_count!\"\nFROM users u\nLEFT JOIN posts p ON p.author_id = u.id\nGROUP BY u.email, p.title"
+
+  let sql =
+    "SELECT\n\
+    \  u.email,\n\
+    \  p.title AS \"title?\",\n\
+    \  coalesce(count(p.id), 0) AS \"post_count!\"\n\
+     FROM users u\n\
+     LEFT JOIN posts p ON p.author_id = u.id\n\
+     GROUP BY u.email, p.title"
 
   let encode () = []
 
   let decode r : count_posts_by_user_row =
-    { email = Sqlml.Row.string r 0
-    ; title = (Sqlml.Row.option Sqlml.Row.string) r 1
-    ; post_count = Sqlml.Row.int r 2
+    {
+      email = Sqlml.Row.string r 0;
+      title = (Sqlml.Row.option Sqlml.Row.string) r 1;
+      post_count = Sqlml.Row.int r 2;
     }
 
   let columns = 3
-
   let cardinality = Sqlml.Query.Many
 end
 
@@ -180,17 +174,11 @@ let count_posts_by_user conn = Sqlml.fetch_all (module Count_posts_by_user) conn
 let count_posts_by_user_exn conn = Sqlml.or_raise (count_posts_by_user conn)
 
 module Delete_user = struct
-  type params =
-    { id : Uuidm.t
-    }
+  type params = { id : Uuidm.t }
 
   let name = "DeleteUser"
   let sql = "DELETE FROM users WHERE id = $1"
-
-  let encode (p : params) =
-    [ Sqlml.Value.of_uuid p.id
-    ]
-
+  let encode (p : params) = [ Sqlml.Value.of_uuid p.id ]
   let cardinality = Sqlml.Query.Exec
 end
 
@@ -198,163 +186,178 @@ let delete_user conn ~id = Sqlml.exec (module Delete_user) conn { Delete_user.id
 let delete_user_exn conn ~id = Sqlml.or_raise (delete_user conn ~id)
 
 module Get_user_full = struct
-  type params =
-    { id : Uuidm.t
-    }
+  type params = { id : Uuidm.t }
   type row = users_row
 
   let name = "GetUserFull"
-  let sql = "SELECT id, organization_id, email, display_name, status, balance, created_at\nFROM users\nWHERE id = $1"
 
-  let encode (p : params) =
-    [ Sqlml.Value.of_uuid p.id
-    ]
+  let sql =
+    "SELECT id, organization_id, email, display_name, status, balance, created_at\n\
+     FROM users\n\
+     WHERE id = $1"
+
+  let encode (p : params) = [ Sqlml.Value.of_uuid p.id ]
 
   let decode r : users_row =
-    { id = Sqlml.Row.uuid r 0
-    ; organization_id = Sqlml.Row.uuid r 1
-    ; email = Sqlml.Row.string r 2
-    ; display_name = (Sqlml.Row.option Sqlml.Row.string) r 3
-    ; status = user_status_of_row r 4
-    ; balance = Sqlml.Row.decimal r 5
-    ; created_at = Sqlml.Row.ptime r 6
+    {
+      id = Sqlml.Row.uuid r 0;
+      organization_id = Sqlml.Row.uuid r 1;
+      email = Sqlml.Row.string r 2;
+      display_name = (Sqlml.Row.option Sqlml.Row.string) r 3;
+      status = user_status_of_row r 4;
+      balance = Sqlml.Row.decimal r 5;
+      created_at = Sqlml.Row.ptime r 6;
     }
 
   let columns = 7
-
   let cardinality = Sqlml.Query.One
 end
 
-let get_user_full conn ~id = Sqlml.fetch_one (module Get_user_full) conn { Get_user_full.id }
+let get_user_full conn ~id =
+  Sqlml.fetch_one (module Get_user_full) conn { Get_user_full.id }
+
 let get_user_full_exn conn ~id = Sqlml.or_raise (get_user_full conn ~id)
 
 module Set_display_name = struct
-  type params =
-    { display_name : string option
-    ; id : Uuidm.t
-    }
+  type params = { display_name : string option; id : Uuidm.t }
 
   let name = "SetDisplayName"
   let sql = "UPDATE users SET display_name = $1 WHERE id = $2"
 
   let encode (p : params) =
-    [ (Sqlml.Value.of_option Sqlml.Value.of_string) p.display_name
-    ; Sqlml.Value.of_uuid p.id
+    [
+      (Sqlml.Value.of_option Sqlml.Value.of_string) p.display_name;
+      Sqlml.Value.of_uuid p.id;
     ]
 
   let cardinality = Sqlml.Query.Exec
 end
 
-let set_display_name conn ~id ?display_name () = Sqlml.exec (module Set_display_name) conn { Set_display_name.display_name; id }
-let set_display_name_exn conn ~id ?display_name () = Sqlml.or_raise (set_display_name conn ~id ?display_name ())
+let set_display_name conn ~id ?display_name () =
+  Sqlml.exec (module Set_display_name) conn { Set_display_name.display_name; id }
+
+let set_display_name_exn conn ~id ?display_name () =
+  Sqlml.or_raise (set_display_name conn ~id ?display_name ())
 
 module Create_user = struct
-  type params =
-    { id : Uuidm.t
-    ; organization_id : Uuidm.t
-    ; email : string
-    ; display_name : string option
-    ; status : user_status
-    ; balance : Decimal.t
-    }
+  type params = {
+    id : Uuidm.t;
+    organization_id : Uuidm.t;
+    email : string;
+    display_name : string option;
+    status : user_status;
+    balance : Decimal.t;
+  }
 
   let name = "CreateUser"
-  let sql = "INSERT INTO users (id, organization_id, email, display_name, status, balance)\nVALUES ($1, $2, $3, $4, $5, $6)"
+
+  let sql =
+    "INSERT INTO users (id, organization_id, email, display_name, status, balance)\n\
+     VALUES ($1, $2, $3, $4, $5, $6)"
 
   let encode (p : params) =
-    [ Sqlml.Value.of_uuid p.id
-    ; Sqlml.Value.of_uuid p.organization_id
-    ; Sqlml.Value.of_string p.email
-    ; (Sqlml.Value.of_option Sqlml.Value.of_string) p.display_name
-    ; user_status_to_value p.status
-    ; Sqlml.Value.of_decimal p.balance
+    [
+      Sqlml.Value.of_uuid p.id;
+      Sqlml.Value.of_uuid p.organization_id;
+      Sqlml.Value.of_string p.email;
+      (Sqlml.Value.of_option Sqlml.Value.of_string) p.display_name;
+      user_status_to_value p.status;
+      Sqlml.Value.of_decimal p.balance;
     ]
 
   let cardinality = Sqlml.Query.Exec
 end
 
-let create_user conn ~id ~organization_id ~email ~status ~balance ?display_name () = Sqlml.exec (module Create_user) conn { Create_user.id; organization_id; email; display_name; status; balance }
-let create_user_exn conn ~id ~organization_id ~email ~status ~balance ?display_name () = Sqlml.or_raise (create_user conn ~id ~organization_id ~email ~status ~balance ?display_name ())
+let create_user conn ~id ~organization_id ~email ~status ~balance ?display_name () =
+  Sqlml.exec
+    (module Create_user)
+    conn
+    { Create_user.id; organization_id; email; display_name; status; balance }
+
+let create_user_exn conn ~id ~organization_id ~email ~status ~balance ?display_name () =
+  Sqlml.or_raise
+    (create_user conn ~id ~organization_id ~email ~status ~balance ?display_name ())
 
 module Get_users_by_ids = struct
-  type params =
-    { ids : Uuidm.t list
-    }
+  type params = { ids : Uuidm.t list }
   type row = get_users_by_ids_row
 
   let name = "GetUsersByIds"
   let sql = "SELECT id, email FROM users WHERE id = ANY($1)"
-
-  let encode (p : params) =
-    [ (Sqlml.Value.of_list Sqlml.Value.Print.uuid) p.ids
-    ]
+  let encode (p : params) = [ (Sqlml.Value.of_list Sqlml.Value.Print.uuid) p.ids ]
 
   let decode r : get_users_by_ids_row =
-    { id = Sqlml.Row.uuid r 0
-    ; email = Sqlml.Row.string r 1
-    }
+    { id = Sqlml.Row.uuid r 0; email = Sqlml.Row.string r 1 }
 
   let columns = 2
-
   let cardinality = Sqlml.Query.Many
 end
 
-let get_users_by_ids conn ~ids = Sqlml.fetch_all (module Get_users_by_ids) conn { Get_users_by_ids.ids }
+let get_users_by_ids conn ~ids =
+  Sqlml.fetch_all (module Get_users_by_ids) conn { Get_users_by_ids.ids }
+
 let get_users_by_ids_exn conn ~ids = Sqlml.or_raise (get_users_by_ids conn ~ids)
 
 module Put_tag_set = struct
-  type params =
-    { id : Uuidm.t
-    ; owner : Uuidm.t
-    ; tags : string list
-    ; scores : int list
-    ; states : user_status list
-    ; meta : Yojson.Safe.t
-    }
+  type params = {
+    id : Uuidm.t;
+    owner : Uuidm.t;
+    tags : string list;
+    scores : int list;
+    states : user_status list;
+    meta : Yojson.Safe.t;
+  }
 
   let name = "PutTagSet"
-  let sql = "INSERT INTO tag_sets (id, owner, tags, scores, states, meta)\nVALUES ($1, $2, $3, $4, $5, $6)\nON CONFLICT (id) DO UPDATE\n  SET tags = excluded.tags, scores = excluded.scores,\n      states = excluded.states, meta = excluded.meta"
+
+  let sql =
+    "INSERT INTO tag_sets (id, owner, tags, scores, states, meta)\n\
+     VALUES ($1, $2, $3, $4, $5, $6)\n\
+     ON CONFLICT (id) DO UPDATE\n\
+    \  SET tags = excluded.tags, scores = excluded.scores,\n\
+    \      states = excluded.states, meta = excluded.meta"
 
   let encode (p : params) =
-    [ Sqlml.Value.of_uuid p.id
-    ; Sqlml.Value.of_uuid p.owner
-    ; (Sqlml.Value.of_list Sqlml.Value.Print.string) p.tags
-    ; (Sqlml.Value.of_list Sqlml.Value.Print.int) p.scores
-    ; (Sqlml.Value.of_list user_status_to_string) p.states
-    ; Sqlml.Value.of_json p.meta
+    [
+      Sqlml.Value.of_uuid p.id;
+      Sqlml.Value.of_uuid p.owner;
+      (Sqlml.Value.of_list Sqlml.Value.Print.string) p.tags;
+      (Sqlml.Value.of_list Sqlml.Value.Print.int) p.scores;
+      (Sqlml.Value.of_list user_status_to_string) p.states;
+      Sqlml.Value.of_json p.meta;
     ]
 
   let cardinality = Sqlml.Query.Exec
 end
 
-let put_tag_set conn ~id ~owner ~tags ~scores ~states ~meta = Sqlml.exec (module Put_tag_set) conn { Put_tag_set.id; owner; tags; scores; states; meta }
-let put_tag_set_exn conn ~id ~owner ~tags ~scores ~states ~meta = Sqlml.or_raise (put_tag_set conn ~id ~owner ~tags ~scores ~states ~meta)
+let put_tag_set conn ~id ~owner ~tags ~scores ~states ~meta =
+  Sqlml.exec
+    (module Put_tag_set)
+    conn
+    { Put_tag_set.id; owner; tags; scores; states; meta }
+
+let put_tag_set_exn conn ~id ~owner ~tags ~scores ~states ~meta =
+  Sqlml.or_raise (put_tag_set conn ~id ~owner ~tags ~scores ~states ~meta)
 
 module Get_tag_set = struct
-  type params =
-    { id : Uuidm.t
-    }
+  type params = { id : Uuidm.t }
   type row = get_tag_set_row
 
   let name = "GetTagSet"
   let sql = "SELECT tags, scores, states, meta FROM tag_sets WHERE id = $1"
-
-  let encode (p : params) =
-    [ Sqlml.Value.of_uuid p.id
-    ]
+  let encode (p : params) = [ Sqlml.Value.of_uuid p.id ]
 
   let decode r : get_tag_set_row =
-    { tags = (Sqlml.Row.list Sqlml.Row.Elem.string) r 0
-    ; scores = (Sqlml.Row.list Sqlml.Row.Elem.int) r 1
-    ; states = (Sqlml.Row.list user_status_of_string) r 2
-    ; meta = Sqlml.Row.json r 3
+    {
+      tags = (Sqlml.Row.list Sqlml.Row.Elem.string) r 0;
+      scores = (Sqlml.Row.list Sqlml.Row.Elem.int) r 1;
+      states = (Sqlml.Row.list user_status_of_string) r 2;
+      meta = Sqlml.Row.json r 3;
     }
 
   let columns = 4
-
   let cardinality = Sqlml.Query.One
 end
 
 let get_tag_set conn ~id = Sqlml.fetch_one (module Get_tag_set) conn { Get_tag_set.id }
 let get_tag_set_exn conn ~id = Sqlml.or_raise (get_tag_set conn ~id)
-

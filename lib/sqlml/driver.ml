@@ -1,26 +1,26 @@
 (** The backend boundary.
 
-   Everything above this line is backend-neutral; everything below is a driver
-   (sqlml_caqti today, a native wire driver later). Generated code never names a
-   driver -- it receives a [Driver.t], which packs the driver away existentially.
+    Everything above this line is backend-neutral; everything below is a driver
+    (sqlml_caqti today, a native wire driver later). Generated code never names a driver
+    -- it receives a [Driver.t], which packs the driver away existentially.
 
-   Note the asymmetry with query dispatch: the *driver* is existential (a plain
-   GADT + first-class module, so a connection is an ordinary value you can store
-   in a record or pass around), while the *query* is a modular explicit, so its
-   params/row types can appear in the execution function's type. *)
+    Note the asymmetry with query dispatch: the *driver* is existential (a plain GADT +
+    first-class module, so a connection is an ordinary value you can store in a record or
+    pass around), while the *query* is a modular explicit, so its params/row types can
+    appear in the execution function's type. *)
 
 (* What a driver reports when a statement fails. [sqlstate] is absent for
    client-side failures (a dropped socket, a malformed URI) where the server
    never got far enough to classify anything. *)
-type error =
-  { message : string
-  ; sqlstate : Sqlstate.t option
-  ; detail : string option
-  ; hint : string option
-  ; constraint_name : string option
-  ; table_name : string option
-  ; column_name : string option
-  }
+type error = {
+  message : string;
+  sqlstate : Sqlstate.t option;
+  detail : string option;
+  hint : string option;
+  constraint_name : string option;
+  table_name : string option;
+  column_name : string option;
+}
 
 let error ?sqlstate ?detail ?hint ?constraint_name ?table_name ?column_name message =
   { message; sqlstate; detail; hint; constraint_name; table_name; column_name }

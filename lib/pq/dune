@@ -17,10 +17,14 @@
  (targets pq_cflags.sexp)
  (deps discover.sh)
  (action
-  (with-stdout-to pq_cflags.sexp (run sh %{dep:discover.sh} cflags))))
+  (with-stdout-to
+   pq_cflags.sexp
+   (run sh %{dep:discover.sh} cflags))))
 
 (rule
  (targets pq_libs.sexp)
  (deps discover.sh)
  (action
-  (with-stdout-to pq_libs.sexp (run sh %{dep:discover.sh} libs))))
+  (with-stdout-to
+   pq_libs.sexp
+   (run sh %{dep:discover.sh} libs))))

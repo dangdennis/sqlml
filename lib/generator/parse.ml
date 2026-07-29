@@ -1,46 +1,40 @@
 (** Parsing .sql files into named queries.
 
-   Authoring model is sqlc's: many queries per file, each introduced by a header
-   comment carrying a name and a cardinality.
+    Authoring model is sqlc's: many queries per file, each introduced by a header comment
+    carrying a name and a cardinality.
 
-     -- name: GetUser :one
-     -- Fetches a single user by id.
-     SELECT id, email, display_name FROM users WHERE id = :id;
+    -- name: GetUser :one -- Fetches a single user by id. SELECT id, email, display_name
+    FROM users WHERE id = :id;
 
-   Named parameters (:id) are rewritten to positional ($1) before the query is
-   sent to Postgres, and the names become the fields of the generated params
-   record.
+    Named parameters (:id) are rewritten to positional ($1) before the query is sent to
+    Postgres, and the names become the fields of the generated params record.
 
-   Nullability overrides are deliberately NOT handled here. They ride to
-   Postgres inside a quoted column alias --
+    Nullability overrides are deliberately NOT handled here. They ride to Postgres inside
+    a quoted column alias --
 
-     SELECT coalesce(total, 0) AS "total!"
+    SELECT coalesce(total, 0) AS "total!"
 
-   -- so Postgres echoes the marker back in RowDescription and [Describe] strips
-   it. That means we never rewrite the user's SELECT list, and a marker can
-   never be confused with SQL syntax. *)
+    -- so Postgres echoes the marker back in RowDescription and [Describe] strips it. That
+    means we never rewrite the user's SELECT list, and a marker can never be confused with
+    SQL syntax. *)
 
 type cardinality = One | Many | Exec
 
 (* [nullable] comes from a trailing ? on the placeholder -- [:display_name?].
    It cannot be inferred: Postgres's Describe reports parameter types but says
    nothing about whether a parameter may be null, so this has to be stated. *)
-type param =
-  { pname : string
-  ; index : int
-  ; nullable : bool
-  }
+type param = { pname : string; index : int; nullable : bool }
 
-type t =
-  { name : string; (* GetUser, as written *)
-    module_name : string; (* Get_user *)
-    cardinality : cardinality;
-    doc : string list;
-    sql : string; (* with $1 placeholders *)
-    params : param list; (* ordered by index *)
-    file : string;
-    line : int
-  }
+type t = {
+  name : string; (* GetUser, as written *)
+  module_name : string; (* Get_user *)
+  cardinality : cardinality;
+  doc : string list;
+  sql : string; (* with $1 placeholders *)
+  params : param list; (* ordered by index *)
+  file : string;
+  line : int;
+}
 
 type error = { file : string; line : int; message : string }
 
@@ -62,7 +56,9 @@ let to_snake s =
     let c = s.[i] in
     if is_upper c then begin
       let prev_lower_or_digit = i > 0 && (is_lower s.[i - 1] || is_digit s.[i - 1]) in
-      let boundary_of_acronym = i > 0 && is_upper s.[i - 1] && i + 1 < n && is_lower s.[i + 1] in
+      let boundary_of_acronym =
+        i > 0 && is_upper s.[i - 1] && i + 1 < n && is_lower s.[i + 1]
+      in
       if prev_lower_or_digit || boundary_of_acronym then Buffer.add_char b '_';
       Buffer.add_char b (Char.lowercase_ascii c)
     end
@@ -72,7 +68,10 @@ let to_snake s =
 
 let to_module_name s =
   let snake = to_snake s in
-  if snake = "" then snake else String.make 1 (Char.uppercase_ascii snake.[0]) ^ String.sub snake 1 (String.length snake - 1)
+  if snake = "" then snake
+  else
+    String.make 1 (Char.uppercase_ascii snake.[0])
+    ^ String.sub snake 1 (String.length snake - 1)
 
 (* ---------- named parameters -> $n ---------- *)
 
@@ -97,8 +96,12 @@ let rewrite_params ~file ~line sql =
     let fin = ref false in
     while (not !fin) && !i < n do
       if sql.[!i] = q then
-        if !i + 1 < n && sql.[!i + 1] = q then (copy_char (); copy_char ())
-        else (copy_char (); fin := true)
+        if !i + 1 < n && sql.[!i + 1] = q then (
+          copy_char ();
+          copy_char ())
+        else (
+          copy_char ();
+          fin := true)
       else copy_char ()
     done;
     if not !fin then bad := Some (Printf.sprintf "unterminated %c" q)
@@ -108,15 +111,22 @@ let rewrite_params ~file ~line sql =
     if c = '\'' then copy_quoted '\''
     else if c = '"' then copy_quoted '"'
     else if c = '-' && !i + 1 < n && sql.[!i + 1] = '-' then
-      while !i < n && sql.[!i] <> '\n' do copy_char () done
+      while !i < n && sql.[!i] <> '\n' do
+        copy_char ()
+      done
     else if c = '/' && !i + 1 < n && sql.[!i + 1] = '*' then begin
       (* block comments nest in Postgres *)
       let depth = ref 0 in
       let fin = ref false in
       while (not !fin) && !i < n do
-        if !i + 1 < n && sql.[!i] = '/' && sql.[!i + 1] = '*' then (incr depth; copy_char (); copy_char ())
+        if !i + 1 < n && sql.[!i] = '/' && sql.[!i + 1] = '*' then (
+          incr depth;
+          copy_char ();
+          copy_char ())
         else if !i + 1 < n && sql.[!i] = '*' && sql.[!i + 1] = '/' then begin
-          decr depth; copy_char (); copy_char ();
+          decr depth;
+          copy_char ();
+          copy_char ();
           if !depth = 0 then fin := true
         end
         else copy_char ()
@@ -126,11 +136,14 @@ let rewrite_params ~file ~line sql =
     else if c = '$' && !i + 1 < n && is_digit sql.[!i + 1] then
       (* an explicit positional placeholder the user wrote; leave it alone *)
       copy_char ()
-    else if c = '$' && !i + 1 < n && (sql.[!i + 1] = '$' || is_ident_start sql.[!i + 1]) then begin
+    else if c = '$' && !i + 1 < n && (sql.[!i + 1] = '$' || is_ident_start sql.[!i + 1])
+    then begin
       (* dollar-quoted string: $tag$ ... $tag$ *)
       let start = !i in
       let j = ref (!i + 1) in
-      while !j < n && is_ident_char sql.[!j] do incr j done;
+      while !j < n && is_ident_char sql.[!j] do
+        incr j
+      done;
       if !j < n && sql.[!j] = '$' then begin
         let tag = String.sub sql start (!j - start + 1) in
         let tlen = String.length tag in
@@ -139,7 +152,9 @@ let rewrite_params ~file ~line sql =
         let fin = ref false in
         while (not !fin) && !i < n do
           if !i + tlen <= n && String.sub sql !i tlen = tag then begin
-            Buffer.add_string buf tag; i := !i + tlen; fin := true
+            Buffer.add_string buf tag;
+            i := !i + tlen;
+            fin := true
           end
           else copy_char ()
         done;
@@ -147,11 +162,15 @@ let rewrite_params ~file ~line sql =
       end
       else copy_char ()
     end
-    else if c = ':' && !i + 1 < n && sql.[!i + 1] = ':' then (copy_char (); copy_char ())
+    else if c = ':' && !i + 1 < n && sql.[!i + 1] = ':' then (
+      copy_char ();
+      copy_char ())
     else if c = ':' && !i + 1 < n && is_ident_start sql.[!i + 1] then begin
       let start = !i + 1 in
       let j = ref start in
-      while !j < n && is_ident_char sql.[!j] do incr j done;
+      while !j < n && is_ident_char sql.[!j] do
+        incr j
+      done;
       let name = String.sub sql start (!j - start) in
       (* trailing ? marks the parameter nullable, and is not part of the SQL *)
       let nullable = !j < n && sql.[!j] = '?' in
@@ -159,12 +178,12 @@ let rewrite_params ~file ~line sql =
       let index =
         match List.assoc_opt name !order with
         | Some (k, was_null) ->
-          order := (name, (k, was_null || nullable)) :: List.remove_assoc name !order;
-          k
+            order := (name, (k, was_null || nullable)) :: List.remove_assoc name !order;
+            k
         | None ->
-          incr next_index;
-          order := (name, (!next_index, nullable)) :: !order;
-          !next_index
+            incr next_index;
+            order := (name, (!next_index, nullable)) :: !order;
+            !next_index
       in
       Buffer.add_string buf ("$" ^ string_of_int index);
       i := !j
@@ -174,12 +193,12 @@ let rewrite_params ~file ~line sql =
   match !bad with
   | Some m -> err file line m
   | None ->
-    let params =
-      !order
-      |> List.rev_map (fun (pname, (index, nullable)) -> { pname; index; nullable })
-      |> List.sort (fun a b -> compare a.index b.index)
-    in
-    Ok (Buffer.contents buf, params)
+      let params =
+        !order
+        |> List.rev_map (fun (pname, (index, nullable)) -> { pname; index; nullable })
+        |> List.sort (fun a b -> compare a.index b.index)
+      in
+      Ok (Buffer.contents buf, params)
 
 (* ---------- headers ---------- *)
 
@@ -194,15 +213,18 @@ let parse_header line =
     let rest = strip (String.sub s 2 (String.length s - 2)) in
     let tag = "name:" in
     let tl = String.length tag in
-    if String.length rest < tl || String.lowercase_ascii (String.sub rest 0 tl) <> tag then None
+    if String.length rest < tl || String.lowercase_ascii (String.sub rest 0 tl) <> tag
+    then None
     else
       let rest = strip (String.sub rest tl (String.length rest - tl)) in
       match String.split_on_char ' ' rest |> List.filter (fun x -> x <> "") with
       | [ name; card ] when String.length card > 0 && card.[0] = ':' ->
-        Some (name, String.sub card 1 (String.length card - 1))
+          Some (name, String.sub card 1 (String.length card - 1))
       | _ -> None
 
-let is_comment line = let s = strip line in String.length s >= 2 && String.sub s 0 2 = "--"
+let is_comment line =
+  let s = strip line in
+  String.length s >= 2 && String.sub s 0 2 = "--"
 
 let cardinality_of_string = function
   | "one" -> Some One
@@ -229,39 +251,55 @@ let of_string ~file contents =
       let lineno = idx + 1 in
       match parse_header line with
       | Some (name, card) ->
-        (match !cur with Some g -> groups := g :: !groups | None -> ());
-        cur := Some (lineno, name, card, ref [])
+          (match !cur with Some g -> groups := g :: !groups | None -> ());
+          cur := Some (lineno, name, card, ref [])
       | None -> (
-        match !cur with
-        | Some (_, _, _, body) -> body := line :: !body
-        | None -> () (* preamble before the first header: ignored *)))
+          match !cur with
+          | Some (_, _, _, body) -> body := line :: !body
+          | None -> () (* preamble before the first header: ignored *)))
     lines;
   (match !cur with Some g -> groups := g :: !groups | None -> ());
   let groups = List.rev !groups in
   let rec build acc = function
     | [] -> Ok (List.rev acc)
     | (line, name, card, body) :: rest ->
-      let* cardinality =
-        match cardinality_of_string card with
-        | Some c -> Ok c
-        | None -> err file line (Printf.sprintf "unknown cardinality %S (expected :one, :many or :exec)" card)
-      in
-      let body = List.rev !body in
-      (* leading comment lines directly under the header are the docstring *)
-      let rec split_doc doc = function
-        | l :: tl when is_comment l ->
-          let s = strip l in
-          split_doc (strip (String.sub s 2 (String.length s - 2)) :: doc) tl
-        | l :: tl when strip l = "" && doc <> [] -> split_doc doc tl
-        | rest -> (List.rev doc, rest)
-      in
-      let doc, sql_lines = split_doc [] body in
-      let raw_sql = strip_trailing_semicolon (String.concat "\n" sql_lines) in
-      let* () = if raw_sql = "" then err file line (Printf.sprintf "query %S has no SQL" name) else Ok () in
-      let* sql, params = rewrite_params ~file ~line raw_sql in
-      build
-        ({ name; module_name = to_module_name name; cardinality; doc; sql; params; file; line } :: acc)
-        rest
+        let* cardinality =
+          match cardinality_of_string card with
+          | Some c -> Ok c
+          | None ->
+              err file line
+                (Printf.sprintf "unknown cardinality %S (expected :one, :many or :exec)"
+                   card)
+        in
+        let body = List.rev !body in
+        (* leading comment lines directly under the header are the docstring *)
+        let rec split_doc doc = function
+          | l :: tl when is_comment l ->
+              let s = strip l in
+              split_doc (strip (String.sub s 2 (String.length s - 2)) :: doc) tl
+          | l :: tl when strip l = "" && doc <> [] -> split_doc doc tl
+          | rest -> (List.rev doc, rest)
+        in
+        let doc, sql_lines = split_doc [] body in
+        let raw_sql = strip_trailing_semicolon (String.concat "\n" sql_lines) in
+        let* () =
+          if raw_sql = "" then err file line (Printf.sprintf "query %S has no SQL" name)
+          else Ok ()
+        in
+        let* sql, params = rewrite_params ~file ~line raw_sql in
+        build
+          ({
+             name;
+             module_name = to_module_name name;
+             cardinality;
+             doc;
+             sql;
+             params;
+             file;
+             line;
+           }
+          :: acc)
+          rest
   in
   build [] groups
 

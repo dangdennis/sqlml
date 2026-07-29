@@ -6,7 +6,9 @@ open Generated
 
 let check what b =
   if b then Printf.printf "ok   %s\n" what
-  else (Printf.printf "FAIL %s\n" what; exit 1)
+  else (
+    Printf.printf "FAIL %s\n" what;
+    exit 1)
 
 let contains hay needle =
   let nh = String.length hay and nn = String.length needle in
@@ -27,22 +29,34 @@ module Stub = struct
     if contains sql "organization_id, email" then
       (* GetUserFull: all 7 columns of users *)
       Ok
-        [ [| Sqlml.Value.Text uuid_s; Sqlml.Value.Text uuid_s
-           ; Sqlml.Value.Text "dennis@example.com"; Sqlml.Value.Null
-           ; Sqlml.Value.Text "banned"; Sqlml.Value.Text "1234.50"; ts
-          |]
+        [
+          [|
+            Sqlml.Value.Text uuid_s;
+            Sqlml.Value.Text uuid_s;
+            Sqlml.Value.Text "dennis@example.com";
+            Sqlml.Value.Null;
+            Sqlml.Value.Text "banned";
+            Sqlml.Value.Text "1234.50";
+            ts;
+          |];
         ]
     else if contains sql "post_count" then
       Ok
-        [ [| Sqlml.Value.Text "a@b.c"; Sqlml.Value.Null; Sqlml.Value.Int 0 |]
-        ; [| Sqlml.Value.Text "c@d.e"; Sqlml.Value.Text "Hello"; Sqlml.Value.Int 3 |]
+        [
+          [| Sqlml.Value.Text "a@b.c"; Sqlml.Value.Null; Sqlml.Value.Int 0 |];
+          [| Sqlml.Value.Text "c@d.e"; Sqlml.Value.Text "Hello"; Sqlml.Value.Int 3 |];
         ]
     else if contains sql "display_name" then
       Ok
-        [ [| Sqlml.Value.Text uuid_s; Sqlml.Value.Text "dennis@example.com"
-           ; Sqlml.Value.Text "Dennis"; Sqlml.Value.Text "active"
-           ; Sqlml.Value.Text "1234.50"; ts
-          |]
+        [
+          [|
+            Sqlml.Value.Text uuid_s;
+            Sqlml.Value.Text "dennis@example.com";
+            Sqlml.Value.Text "Dennis";
+            Sqlml.Value.Text "active";
+            Sqlml.Value.Text "1234.50";
+            ts;
+          |];
         ]
     else Ok [ [| Sqlml.Value.Text uuid_s; Sqlml.Value.Text "x@y.z"; ts |] ]
 
@@ -58,21 +72,21 @@ let uuid = Option.get (Uuidm.of_string uuid_s)
 let () =
   (* :one, with an enum and a numeric *)
   (match Db.get_user_exn conn ~id:uuid with
-   | Some u ->
-     check "get_user decodes" (u.Db.email = "dennis@example.com");
-     check "enum decodes" (u.Db.status = Db.Active);
-     check "numeric decodes" (Decimal.to_string u.Db.balance = "1234.50");
-     check "timestamptz decodes" (Ptime.to_year u.Db.created_at = 2026);
-     check "uuid decodes" (Uuidm.equal u.Db.id uuid)
-   | None -> check "get_user decodes" false);
+  | Some u ->
+      check "get_user decodes" (u.Db.email = "dennis@example.com");
+      check "enum decodes" (u.Db.status = Db.Active);
+      check "numeric decodes" (Decimal.to_string u.Db.balance = "1234.50");
+      check "timestamptz decodes" (Ptime.to_year u.Db.created_at = 2026);
+      check "uuid decodes" (Uuidm.equal u.Db.id uuid)
+  | None -> check "get_user decodes" false);
 
   (* the shared model type: one helper, two queries *)
   let email_of (u : Db.users_row) = u.Db.email in
   (match Db.get_user_full_exn conn ~id:uuid with
-   | Some u ->
-     check "shared model decodes" (email_of u = "dennis@example.com");
-     check "second enum label" (u.Db.status = Db.Banned)
-   | None -> check "shared model decodes" false);
+  | Some u ->
+      check "shared model decodes" (email_of u = "dennis@example.com");
+      check "second enum label" (u.Db.status = Db.Banned)
+  | None -> check "shared model decodes" false);
 
   (* :many, with the ? and ! overrides *)
   let rows = Db.count_posts_by_user_exn conn in
@@ -91,11 +105,15 @@ let () =
   (* optional argument supplied *)
   ignore (Db.set_display_name_exn conn ~id:uuid ~display_name:"Dennis" ());
   check "supplied optional encodes Text"
-    (match state.Stub.last_params with Sqlml.Value.Text "Dennis" :: _ -> true | _ -> false);
+    (match state.Stub.last_params with
+    | Sqlml.Value.Text "Dennis" :: _ -> true
+    | _ -> false);
 
   (* encoders: uuid goes out as text *)
   ignore (Db.get_user conn ~id:uuid);
   check "uuid encodes"
-    (match state.Stub.last_params with [ Sqlml.Value.Text s ] -> s = uuid_s | _ -> false);
+    (match state.Stub.last_params with
+    | [ Sqlml.Value.Text s ] -> s = uuid_s
+    | _ -> false);
 
   print_endline "all good"

@@ -212,6 +212,17 @@ Sqlml_caqti.Pool.use pool (fun conn -> get_user conn ~id)
 A pool exposes no query operations. Reaching a connection requires `Pool.use` or
 `Pool.transaction`, both of which scope it.
 
+## Formatting
+
+Generated code is run through `ocamlformat` using whatever `.ocamlformat`
+applies to the output directory, so it arrives in your project's own style.
+
+This is not cosmetic. `check` compares byte-for-byte, so without it an editor
+that formats on save would make `check` fail forever on code you did not write.
+Formatting in the generator means `generate` and `check` agree by construction.
+If `ocamlformat` is not installed, output is emitted unformatted rather than
+failing.
+
 ## Development
 
 ```

@@ -24,8 +24,7 @@ let handle_signup pool ~id ~email ~display_name =
   let* _ = set_display_name tx ~id ~display_name () in
   get_user tx ~id
 
-let handle_show pool ~id =
-  Sqlml_caqti.Pool.use pool (fun conn -> get_user conn ~id)
+let handle_show pool ~id = Sqlml_caqti.Pool.use pool (fun conn -> get_user conn ~id)
 
 let handle_roster pool =
   Sqlml_caqti.Pool.use pool (fun conn ->
@@ -34,31 +33,37 @@ let handle_roster pool =
 (* ---------- driving it ---------- *)
 
 let people =
-  [ (uuid "1b4e28ba-2fa1-11d2-883f-0016d3cca427", "alice@example.com", "Alice")
-  ; (uuid "2c5f39cb-3fb2-22e3-994f-1127e4dda538", "bob@example.com", "Bob")
-  ; (uuid "3d6a4adc-4fc3-33f4-aa5f-2238f5eee649", "carol@example.com", "Carol")
-  ; (uuid "4e7b5bed-5fd4-44f5-bb6f-3349f6fff75a", "dave@example.com", "Dave")
+  [
+    (uuid "1b4e28ba-2fa1-11d2-883f-0016d3cca427", "alice@example.com", "Alice");
+    (uuid "2c5f39cb-3fb2-22e3-994f-1127e4dda538", "bob@example.com", "Bob");
+    (uuid "3d6a4adc-4fc3-33f4-aa5f-2238f5eee649", "carol@example.com", "Carol");
+    (uuid "4e7b5bed-5fd4-44f5-bb6f-3349f6fff75a", "dave@example.com", "Dave");
   ]
 
 let unwrap what = function
   | Ok v -> v
-  | Error e -> Printf.printf "%s: %s\n" what (Sqlml.Error.to_string e); exit 1
+  | Error e ->
+      Printf.printf "%s: %s\n" what (Sqlml.Error.to_string e);
+      exit 1
 
 let () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let uri = Sqlml_caqti.uri_of_env () in
   let pool =
-    match Sqlml_caqti.Pool.create ~sw ~stdenv:(env :> Caqti_eio.stdenv) ~max_size:4 uri with
+    match
+      Sqlml_caqti.Pool.create ~sw ~stdenv:(env :> Caqti_eio.stdenv) ~max_size:4 uri
+    with
     | Ok p -> p
-    | Error e -> prerr_endline (Sqlml.Error.to_string e); exit 1
+    | Error e ->
+        prerr_endline (Sqlml.Error.to_string e);
+        exit 1
   in
   Printf.printf "pool     : up (max 4 connections)\n";
 
   (* clean slate *)
   List.iter
-    (fun (id, _, _) ->
-      ignore (Sqlml_caqti.Pool.use pool (fun c -> delete_user c ~id)))
+    (fun (id, _, _) -> ignore (Sqlml_caqti.Pool.use pool (fun c -> delete_user c ~id)))
     people;
 
   (* Four signups running concurrently, each on its own pooled connection, each
@@ -69,7 +74,8 @@ let () =
          match handle_signup pool ~id ~email ~display_name with
          | Ok (Some u) -> Printf.printf "signup   : %s\n" u.email
          | Ok None -> Printf.printf "signup   : %s vanished\n" email
-         | Error e -> Printf.printf "signup   : %s failed: %s\n" email (Sqlml.Error.to_string e))
+         | Error e ->
+             Printf.printf "signup   : %s failed: %s\n" email (Sqlml.Error.to_string e))
        people);
 
   (* concurrent reads *)
@@ -77,7 +83,9 @@ let () =
     (List.map
        (fun (id, email, _) () ->
          match handle_show pool ~id with
-         | Ok (Some u) -> Printf.printf "show     : %s -> %s\n" email (Option.value u.display_name ~default:"?")
+         | Ok (Some u) ->
+             Printf.printf "show     : %s -> %s\n" email
+               (Option.value u.display_name ~default:"?")
          | _ -> Printf.printf "show     : %s missing\n" email)
        people);
 
@@ -87,24 +95,26 @@ let () =
   (* a transaction that fails rolls back, and the connection returns to the pool
      usable -- the classic pooling bug is returning it poisoned *)
   let dup = uuid "5f8c6cfe-6fe5-45f6-cc7f-445af7000a6b" in
-  (match handle_signup pool ~id:dup ~email:"alice@example.com" ~display_name:"Impostor" with
-   | Ok _ -> print_endline "duplicate: unexpectedly succeeded"
-   | Error e ->
-     (* This is what a handler actually needs: not "it failed", but which
+  (match
+     handle_signup pool ~id:dup ~email:"alice@example.com" ~display_name:"Impostor"
+   with
+  | Ok _ -> print_endline "duplicate: unexpectedly succeeded"
+  | Error e ->
+      (* This is what a handler actually needs: not "it failed", but which
         constraint, so it can return 409 with a useful message instead of 500. *)
-     let status =
-       match Sqlml.Error.sqlstate e with
-       | Some s when Sqlml.Sqlstate.is_unique_violation s -> "409 Conflict"
-       | Some s when Sqlml.Sqlstate.is_retryable s -> "retry"
-       | Some _ | None -> "500"
-     in
-     let still_works = unwrap "after-rollback" (handle_roster pool) in
-     Printf.printf "duplicate: %s on %s (code %s); pool healthy (%d users)\n" status
-       (Option.value (Sqlml.Error.constraint_name e) ~default:"?")
-       (match Sqlml.Error.sqlstate e with
+      let status =
+        match Sqlml.Error.sqlstate e with
+        | Some s when Sqlml.Sqlstate.is_unique_violation s -> "409 Conflict"
+        | Some s when Sqlml.Sqlstate.is_retryable s -> "retry"
+        | Some _ | None -> "500"
+      in
+      let still_works = unwrap "after-rollback" (handle_roster pool) in
+      Printf.printf "duplicate: %s on %s (code %s); pool healthy (%d users)\n" status
+        (Option.value (Sqlml.Error.constraint_name e) ~default:"?")
+        (match Sqlml.Error.sqlstate e with
         | Some s -> Sqlml.Sqlstate.to_string s
         | None -> "none")
-       (List.length still_works));
+        (List.length still_works));
 
   (* arrays through the Caqti driver, not just libpq *)
   let tag_id = uuid "9c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f" in
@@ -117,11 +127,12 @@ let () =
          in
          get_tag_set c ~id:tag_id)
    with
-   | Ok (Some t) ->
-     Printf.printf "arrays   : tags=%b scores=%b states=%b\n" (t.tags = tags)
-       (t.scores = [ 7; 8 ]) (t.states = [ Active ])
-   | Ok None -> print_endline "arrays   : missing"
-   | Error e -> Printf.printf "arrays   : %s\n" (Sqlml.Error.to_string e));
+  | Ok (Some t) ->
+      Printf.printf "arrays   : tags=%b scores=%b states=%b\n" (t.tags = tags)
+        (t.scores = [ 7; 8 ])
+        (t.states = [ Active ])
+  | Ok None -> print_endline "arrays   : missing"
+  | Error e -> Printf.printf "arrays   : %s\n" (Sqlml.Error.to_string e));
 
   List.iter
     (fun (id, _, _) -> ignore (Sqlml_caqti.Pool.use pool (fun c -> delete_user c ~id)))

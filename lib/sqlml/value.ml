@@ -1,8 +1,8 @@
 (** The wire-neutral value type exchanged with drivers.
 
-   Deliberately small. Richer Postgres types (uuid, timestamptz, json, arrays,
-   enums) are carried as [Text] or [Octets] and converted by generated code via
-   [Row], so that adding a type mapping never requires a driver change. *)
+    Deliberately small. Richer Postgres types (uuid, timestamptz, json, arrays, enums) are
+    carried as [Text] or [Octets] and converted by generated code via [Row], so that
+    adding a type mapping never requires a driver change. *)
 
 type t =
   | Null
@@ -43,7 +43,10 @@ let needs_quoting s =
   s = ""
   || String.lowercase_ascii s = "null"
   || String.exists
-       (fun c -> match c with ',' | '{' | '}' | '"' | '\\' | ' ' | '\t' | '\n' -> true | _ -> false)
+       (fun c ->
+         match c with
+         | ',' | '{' | '}' | '"' | '\\' | ' ' | '\t' | '\n' -> true
+         | _ -> false)
        s
 
 let quote_element s =
@@ -60,7 +63,8 @@ let quote_element s =
     Buffer.contents b
   end
 
-let array_literal elements = "{" ^ String.concat "," (List.map quote_element elements) ^ "}"
+let array_literal elements =
+  "{" ^ String.concat "," (List.map quote_element elements) ^ "}"
 
 (* Element printers, for arrays. Scalar columns go through [of_*] above; array
    elements need a plain [_ -> string] because they are spliced into a literal. *)

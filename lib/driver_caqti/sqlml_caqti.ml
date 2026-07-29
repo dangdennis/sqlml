@@ -28,10 +28,11 @@ let rec row_type n =
   else
     match row_type (n - 1) with
     | Row (t, f) ->
-      Row
-        ( Caqti_type.t2 text t
-        , fun (x, rest) ->
-            (match x with None -> Sqlml.Value.Null | Some s -> Sqlml.Value.Text s) :: f rest )
+        Row
+          ( Caqti_type.t2 text t,
+            fun (x, rest) ->
+              (match x with None -> Sqlml.Value.Null | Some s -> Sqlml.Value.Text s)
+              :: f rest )
 
 type arg_t = Arg : 'a Caqti_type.t * (string option list -> 'a) -> arg_t
 
@@ -40,9 +41,9 @@ let rec arg_type n =
   else
     match arg_type (n - 1) with
     | Arg (t, f) ->
-      Arg
-        ( Caqti_type.t2 text t
-        , fun l -> match l with x :: tl -> (x, f tl) | [] -> (None, f []) )
+        Arg
+          ( Caqti_type.t2 text t,
+            fun l -> match l with x :: tl -> (x, f tl) | [] -> (None, f []) )
 
 let hex_of_octets s =
   let b = Buffer.create ((String.length s * 2) + 2) in
@@ -72,14 +73,14 @@ let diag_of_caqti (e : [< Caqti_error.t ]) =
   let fallback () = Sqlml.Driver.error (Caqti_error.show e) in
   match e with
   | `Request_failed qe | `Response_failed qe -> (
-    match qe.Caqti_error.msg with
-    | Caqti_driver_postgresql.Result_error_msg { error_message; sqlstate } ->
-      Sqlml.Driver.error error_message
-        ?sqlstate:
-          (match String.trim sqlstate with
-           | "" -> None
-           | s -> Some (Sqlml.Sqlstate.of_string s))
-    | _ -> fallback ())
+      match qe.Caqti_error.msg with
+      | Caqti_driver_postgresql.Result_error_msg { error_message; sqlstate } ->
+          Sqlml.Driver.error error_message
+            ?sqlstate:
+              (match String.trim sqlstate with
+              | "" -> None
+              | s -> Some (Sqlml.Sqlstate.of_string s))
+      | _ -> fallback ())
   | _ -> fallback ()
 
 module Raw = struct
@@ -92,7 +93,8 @@ module Raw = struct
     let (Arg (at, mk)) = arg_type (List.length params) in
     let (Row (rt, get)) = row_type columns in
     let req =
-      Caqti_request.create at rt Caqti_mult.zero_or_more (fun _ -> Caqti_query.of_string_exn sql)
+      Caqti_request.create at rt Caqti_mult.zero_or_more (fun _ ->
+          Caqti_query.of_string_exn sql)
     in
     match Db.collect_list req (mk (List.map text_of_value params)) with
     | Ok rows -> Ok (List.map (fun r -> Array.of_list (get r)) rows)
@@ -122,11 +124,11 @@ let err e = Sqlml.Error.Connect (Caqti_error.show e)
 let uri_of_env () =
   Uri.of_string
     (match Sys.getenv_opt "DATABASE_URL" with
-     | Some u when String.trim u <> "" -> u
-     | _ ->
-       let get k d = match Sys.getenv_opt k with Some v when v <> "" -> v | _ -> d in
-       Printf.sprintf "postgresql://%s@%s:%s/%s" (get "PGUSER" "postgres") (get "PGHOST" "127.0.0.1")
-         (get "PGPORT" "5432") (get "PGDATABASE" "postgres"))
+    | Some u when String.trim u <> "" -> u
+    | _ ->
+        let get k d = match Sys.getenv_opt k with Some v when v <> "" -> v | _ -> d in
+        Printf.sprintf "postgresql://%s@%s:%s/%s" (get "PGUSER" "postgres")
+          (get "PGHOST" "127.0.0.1") (get "PGPORT" "5432") (get "PGDATABASE" "postgres"))
 
 (* A single connection, for scripts and tests. A web app wants {!connect_pool}. *)
 let connect ~sw ~stdenv uri =
