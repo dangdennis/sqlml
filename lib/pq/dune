@@ -1,9 +1,10 @@
-; Raw libpq binding, shared by the generator (which needs PQdescribePrepared)
-; and the runtime driver (which needs PQexecParams). Keeping it separate means
-; neither depends on the other.
+; Raw libpq binding, shared by the generator (which needs PQdescribePrepared,
+; PQftable and PQftablecol) and the libpq driver (which needs PQexecParams).
+; Kept separate so neither depends on the other.
+
 (library
  (name pq)
- (public_name sqlml.pq)
+ (public_name sqlml-postgresql.pq)
  (foreign_stubs
   (language c)
   (names pq_stubs)

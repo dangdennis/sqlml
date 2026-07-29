@@ -1,0 +1,17 @@
+{0 sqlml}
+
+Write [.sql] files with sqlc-style annotations; sqlml asks PostgreSQL for the
+parameter and result types of each query and emits typed OCaml.
+
+{1 Packages}
+
+- [sqlml] — the runtime that generated code depends on. See {!module:Sqlml}.
+- [sqlml-postgresql] — the [sqlml] command and a libpq driver, [Sqlml_pg].
+- [sqlml-caqti] — a Caqti/Eio driver with pooling, [Sqlml_caqti].
+
+{1 Entry points}
+
+- {!module:Sqlml} — [fetch_one], [fetch_all], [exec], [transaction].
+- {!module:Sqlml.Row} — decoders used by generated code.
+- {!module:Sqlml.Value} — encoders used by generated code.
+- {!module:Sqlml.Query} — the shape of a generated query module.

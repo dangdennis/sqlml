@@ -23,5 +23,6 @@ CREATE TABLE tag_sets (
   owner  uuid NOT NULL,
   tags   text[] NOT NULL DEFAULT '{}',
   scores int[] NOT NULL DEFAULT '{}',
-  states user_status[] NOT NULL DEFAULT '{}'
+  states user_status[] NOT NULL DEFAULT '{}',
+  meta   jsonb NOT NULL DEFAULT '{}'
 );

@@ -1,4 +1,4 @@
-(* What a generated query module looks like from the runtime's point of view.
+(** What a generated query module looks like from the runtime's point of view.
 
    One module per named query in a .sql file. *)
 

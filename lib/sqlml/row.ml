@@ -1,12 +1,15 @@
-(* Positional row decoders used by generated code.
+(** Positional row decoders used by generated code.
 
    Generated decoders read like the SELECT list they came from:
 
+   {[
      let decode r =
-       { id          = Row.int r 0;
-         email       = Row.string r 1;
-         created_at  = Row.ptime r 2;
-         display_name = Row.(option string) r 3 }
+       { id = Row.int r 0
+       ; email = Row.string r 1
+       ; created_at = Row.ptime r 2
+       ; display_name = Row.(option string) r 3
+       }
+   ]}
 
    Decoders raise [Bad] rather than returning a result so generated code stays
    flat; [Exec] catches it and turns it into [Error.Decode]. *)
@@ -93,6 +96,13 @@ let uuid r i =
     | None -> raise (Bad { column = i; expected = "uuid"; got = s }))
   | v -> bad i "uuid" v
 
+let json r i =
+  match get r i with
+  | Value.Text s -> (
+    try Yojson.Safe.from_string s
+    with _ -> raise (Bad { column = i; expected = "json"; got = s }))
+  | v -> bad i "json" v
+
 let decimal r i =
   match get r i with
   | Value.Text s -> (
@@ -120,6 +130,8 @@ module Elem = struct
   let ptime s = match Ptime.of_rfc3339 ~strict:false (normalize_timestamp s) with
     | Ok (t, _, _) -> t
     | Error _ -> failwith "timestamp"
+
+  let json = Yojson.Safe.from_string
 end
 
 let parse_array_literal ~column s =

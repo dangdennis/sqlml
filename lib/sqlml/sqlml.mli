@@ -14,7 +14,7 @@ module Query = Query
 
 (** {1 Connections} *)
 
-(** An open connection. Obtained from a driver, e.g. {!Sqlml_pg.connect}. *)
+(** An open connection. Obtained from a driver, e.g. [Sqlml_pg.connect] or [Sqlml_caqti.Pool.use]. *)
 type conn = Driver.t
 
 (** {1 Errors} *)

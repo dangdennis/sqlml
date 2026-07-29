@@ -1,4 +1,4 @@
 (library
  (name sqlml_caqti)
- (public_name sqlml.caqti)
+ (public_name sqlml-caqti)
  (libraries sqlml caqti caqti.classic caqti-eio caqti-eio.unix uri))

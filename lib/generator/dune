@@ -1,4 +1,4 @@
 (library
  (name sqlml_gen)
- (public_name sqlml.gen)
+ (public_name sqlml-postgresql.gen)
  (libraries unix pq))

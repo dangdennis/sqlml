@@ -8,6 +8,11 @@ type user_status =
 
 val user_status_to_string : user_status -> string
 
+type count_users_by_status_row =
+  { status : user_status
+  ; n : int
+  }
+
 type get_user_row =
   { id : Uuidm.t
   ; email : string
@@ -48,7 +53,21 @@ type get_tag_set_row =
   { tags : string list
   ; scores : int list
   ; states : user_status list
+  ; meta : Yojson.Safe.t
   }
+
+module Count_users_by_status : sig
+  type params = unit
+
+  include Sqlml.Query.MANY with type params := params and type row = count_users_by_status_row
+end
+
+(** In a subdirectory, to prove discovery recurses. *)
+val count_users_by_status : Sqlml.conn -> (count_users_by_status_row list, Sqlml.Error.t) result
+
+(** Raising {!count_users_by_status}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+val count_users_by_status_exn : Sqlml.conn -> count_users_by_status_row list
 
 module Get_user : sig
   type params =
@@ -186,16 +205,17 @@ module Put_tag_set : sig
     ; tags : string list
     ; scores : int list
     ; states : user_status list
+    ; meta : Yojson.Safe.t
     }
 
   include Sqlml.Query.EXEC with type params := params
 end
 
-val put_tag_set : Sqlml.conn -> id:Uuidm.t -> owner:Uuidm.t -> tags:string list -> scores:int list -> states:user_status list -> (int, Sqlml.Error.t) result
+val put_tag_set : Sqlml.conn -> id:Uuidm.t -> owner:Uuidm.t -> tags:string list -> scores:int list -> states:user_status list -> meta:Yojson.Safe.t -> (int, Sqlml.Error.t) result
 
 (** Raising {!put_tag_set}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val put_tag_set_exn : Sqlml.conn -> id:Uuidm.t -> owner:Uuidm.t -> tags:string list -> scores:int list -> states:user_status list -> int
+val put_tag_set_exn : Sqlml.conn -> id:Uuidm.t -> owner:Uuidm.t -> tags:string list -> scores:int list -> states:user_status list -> meta:Yojson.Safe.t -> int
 
 module Get_tag_set : sig
   type params =

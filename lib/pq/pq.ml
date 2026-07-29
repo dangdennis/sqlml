@@ -1,4 +1,4 @@
-(* Thin OCaml surface over pq_stubs.c. Handles are opaque nativeints; the
+(** Thin OCaml surface over pq_stubs.c. Handles are opaque nativeints; the
    invariant is that every [prepare]/[describe]/[exec] result is [clear]ed. *)
 
 type conn = nativeint

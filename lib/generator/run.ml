@@ -1,4 +1,4 @@
-(* The pipeline behind `sqlml generate` and `sqlml check`.
+(** The pipeline behind [sqlml generate] and [sqlml check].
 
    Both run exactly the same steps -- discover, parse, describe, emit -- and
    differ only in what they do with the result. That is deliberate: if check
@@ -21,17 +21,32 @@ type drift =
       ; actual : string
       }
 
+(* Every .sql file under [dir], recursively. Sorted so generated output is
+   deterministic regardless of readdir order. Hidden directories and _build are
+   skipped. *)
 let sql_files dir =
-  match Sys.readdir dir with
-  | exception Sys_error m -> Error m
-  | entries ->
-    let fs =
-      entries |> Array.to_list
-      |> List.filter (fun f -> Filename.check_suffix f ".sql")
-      |> List.sort compare
-      |> List.map (Filename.concat dir)
+  if not (Sys.file_exists dir) then Error (Printf.sprintf "no such directory: %s" dir)
+  else if not (Sys.is_directory dir) then Error (Printf.sprintf "not a directory: %s" dir)
+  else begin
+    let acc = ref [] in
+    let rec walk d =
+      match Sys.readdir d with
+      | exception Sys_error _ -> ()
+      | entries ->
+        Array.sort compare entries;
+        Array.iter
+          (fun e ->
+            let path = Filename.concat d e in
+            if String.length e > 0 && e.[0] = '.' then ()
+            else if e = "_build" then ()
+            else if Sys.is_directory path then walk path
+            else if Filename.check_suffix e ".sql" then acc := path :: !acc)
+          entries
     in
+    walk dir;
+    let fs = List.sort compare !acc in
     if fs = [] then Error (Printf.sprintf "no .sql files under %s" dir) else Ok fs
+  end
 
 let parse_all files =
   let rec go acc = function

@@ -1,4 +1,4 @@
-(* Asking Postgres what a query's types are.
+(** Asking PostgreSQL what a query's types are.
 
    For each parsed query we PQprepare it (nParams = 0, so the server infers
    parameter types -- the inference is the answer we want) and then

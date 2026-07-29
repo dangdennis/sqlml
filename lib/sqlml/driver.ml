@@ -1,4 +1,4 @@
-(* The backend boundary.
+(** The backend boundary.
 
    Everything above this line is backend-neutral; everything below is a driver
    (sqlml_caqti today, a native wire driver later). Generated code never names a

@@ -10,6 +10,16 @@ let check what b =
   else (Printf.printf "FAIL %s\n" what; incr failures)
 
 let uuid s = Option.get (Uuidm.of_string s)
+
+(* jsonb is a normalised representation: Postgres reorders object keys by length
+   then bytes, re-spaces, and drops duplicate keys. So a round-trip preserves
+   the value, not the text. Compare structurally. Use `json` rather than `jsonb`
+   if byte-exact preservation matters. *)
+let rec json_sorted : Yojson.Safe.t -> Yojson.Safe.t = function
+  | `Assoc kvs ->
+    `Assoc (List.sort compare (List.map (fun (k, v) -> (k, json_sorted v)) kvs))
+  | `List l -> `List (List.map json_sorted l)
+  | v -> v
 let id = uuid "1b4e28ba-2fa1-11d2-883f-0016d3cca427"
 let org = uuid "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 
@@ -116,20 +126,24 @@ let () =
      quote, braces, a backslash, whitespace, the empty string, and the literal
      text NULL which must not be read back as a null element. *)
   let tricky = [ "plain"; "a,b"; "has \"quote\""; "{braces}"; "back\\slash"; "sp ace"; ""; "NULL" ] in
+  let meta = Yojson.Safe.from_string {|{"nested":{"a":[1,2,null]},"s":"x"}|} in
   check "array insert"
     (Db.put_tag_set_exn conn ~id:tag_id ~owner:org ~tags:tricky ~scores:[ 1; -2; 30 ]
-       ~states:[ Db.Active; Db.Banned; Db.Active ]
+       ~states:[ Db.Active; Db.Banned; Db.Active ] ~meta
      = 1);
   (match Db.get_tag_set_exn conn ~id:tag_id with
    | None -> check "array round-trip" false
    | Some t ->
      check "text[] round-trips exactly" (t.Db.tags = tricky);
      check "int[] round-trips" (t.Db.scores = [ 1; -2; 30 ]);
-     check "enum[] decodes to variants" (t.Db.states = [ Db.Active; Db.Banned; Db.Active ]));
+     check "enum[] decodes to variants" (t.Db.states = [ Db.Active; Db.Banned; Db.Active ]);
+     check "jsonb round-trips (structurally)" (json_sorted t.Db.meta = json_sorted meta));
 
   (* empty arrays are not the same as NULL *)
   let empty_id = uuid "8b2c3d4e-5f6a-4b7c-9d0e-1f2a3b4c5d6e" in
-  ignore (Db.put_tag_set_exn conn ~id:empty_id ~owner:org ~tags:[] ~scores:[] ~states:[]);
+  ignore
+    (Db.put_tag_set_exn conn ~id:empty_id ~owner:org ~tags:[] ~scores:[] ~states:[]
+       ~meta:(`Assoc []));
   (match Db.get_tag_set_exn conn ~id:empty_id with
    | Some t -> check "empty array round-trips" (t.Db.tags = [] && t.Db.scores = [])
    | None -> check "empty array round-trips" false);

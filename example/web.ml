@@ -98,7 +98,10 @@ let () =
   let tags = [ "a,b"; "plain"; "" ] in
   (match
      Sqlml_caqti.Pool.use pool (fun c ->
-         let* _ = put_tag_set c ~id:tag_id ~owner:org ~tags ~scores:[ 7; 8 ] ~states:[ Active ] in
+         let* _ =
+           put_tag_set c ~id:tag_id ~owner:org ~tags ~scores:[ 7; 8 ] ~states:[ Active ]
+             ~meta:(`Assoc [ ("k", `Int 1) ])
+         in
          get_tag_set c ~id:tag_id)
    with
    | Ok (Some t) ->

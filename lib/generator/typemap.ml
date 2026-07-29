@@ -1,4 +1,4 @@
-(* Postgres type -> OCaml type, plus the decoder and encoder expressions the
+(** PostgreSQL type to OCaml type, plus the decoder and encoder expressions the
    emitter splices into generated code. *)
 
 type t =
@@ -10,6 +10,7 @@ type t =
   | Uuid
   | Ptime
   | Decimal
+  | Json
   | Enum of string * string list (* ocaml type name, labels in sort order *)
   | Array of t
   | Option of t
@@ -23,6 +24,7 @@ let rec ocaml_type = function
   | Uuid -> "Uuidm.t"
   | Ptime -> "Ptime.t"
   | Decimal -> "Decimal.t"
+  | Json -> "Yojson.Safe.t"
   | Enum (n, _) -> n
   | Array t -> ocaml_type t ^ " list"
   | Option t -> ocaml_type t ^ " option"
@@ -37,6 +39,7 @@ let rec decoder = function
   | Uuid -> "Sqlml.Row.uuid"
   | Ptime -> "Sqlml.Row.ptime"
   | Decimal -> "Sqlml.Row.decimal"
+  | Json -> "Sqlml.Row.json"
   | Enum (n, _) -> n ^ "_of_row"
   | Array t -> Printf.sprintf "(Sqlml.Row.list %s)" (elem_parser t)
   | Option t -> Printf.sprintf "(Sqlml.Row.option %s)" (decoder t)
@@ -51,6 +54,7 @@ and elem_parser = function
   | Uuid -> "Sqlml.Row.Elem.uuid"
   | Ptime -> "Sqlml.Row.Elem.ptime"
   | Decimal -> "Sqlml.Row.Elem.decimal"
+  | Json -> "Sqlml.Row.Elem.json"
   | Enum (n, _) -> n ^ "_of_string"
   | Array _ -> "(fun _ -> failwith \"nested arrays are not supported\")"
   | Option t -> elem_parser t
@@ -65,6 +69,7 @@ let rec encoder = function
   | Uuid -> "Sqlml.Value.of_uuid"
   | Ptime -> "Sqlml.Value.of_ptime"
   | Decimal -> "Sqlml.Value.of_decimal"
+  | Json -> "Sqlml.Value.of_json"
   | Enum (n, _) -> n ^ "_to_value"
   | Array t -> Printf.sprintf "(Sqlml.Value.of_list %s)" (elem_printer t)
   | Option t -> Printf.sprintf "(Sqlml.Value.of_option %s)" (encoder t)
@@ -77,6 +82,7 @@ and elem_printer = function
   | Uuid -> "Sqlml.Value.Print.uuid"
   | Ptime -> "Sqlml.Value.Print.ptime"
   | Decimal -> "Sqlml.Value.Print.decimal"
+  | Json -> "Sqlml.Value.Print.json"
   | Enum (n, _) -> n ^ "_to_string"
   | Array _ -> "(fun _ -> failwith \"nested arrays are not supported\")"
   | Option t -> elem_printer t
@@ -99,7 +105,7 @@ let base_of_pg_name = function
   | "timestamp" | "timestamptz" -> Some Ptime
   (* Ptime.of_rfc3339 needs a full date+time, so these stay textual for now *)
   | "date" | "time" | "timetz" | "interval" -> Some String
-  | "json" | "jsonb" -> Some String
+  | "json" | "jsonb" -> Some Json
   | "inet" | "cidr" | "macaddr" | "macaddr8" -> Some String
   | _ -> None
 

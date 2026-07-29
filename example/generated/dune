@@ -1,4 +1,4 @@
 ; Compiling the generator's own output is the acceptance test.
 (library
  (name generated)
- (libraries sqlml ptime uuidm decimal))
+ (libraries sqlml ptime uuidm decimal yojson))

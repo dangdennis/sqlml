@@ -1,5 +1,5 @@
 (executables
  (names main e2e app web)
  (modules main db wide e2e app web)
- (libraries sqlml sqlml_pg sqlml_caqti generated ptime uuidm decimal
+ (libraries sqlml sqlml_pg sqlml_caqti generated ptime uuidm decimal yojson
    caqti-eio caqti-driver-postgresql eio_main))

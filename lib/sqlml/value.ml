@@ -1,4 +1,4 @@
-(* The wire-neutral value type exchanged with drivers.
+(** The wire-neutral value type exchanged with drivers.
 
    Deliberately small. Richer Postgres types (uuid, timestamptz, json, arrays,
    enums) are carried as [Text] or [Octets] and converted by generated code via
@@ -31,6 +31,7 @@ let of_decimal d = Text (Decimal.to_string d)
 
 (* Postgres accepts RFC3339 on input regardless of its DateStyle setting. *)
 let of_ptime t = Text (Ptime.to_rfc3339 ~tz_offset_s:0 t)
+let of_json j = Text (Yojson.Safe.to_string j)
 
 (* ---------- arrays ----------
 
@@ -72,6 +73,7 @@ module Print = struct
   let uuid = Uuidm.to_string
   let decimal = Decimal.to_string
   let ptime t = Ptime.to_rfc3339 ~tz_offset_s:0 t
+  let json = Yojson.Safe.to_string
 end
 
 (* [of_list print xs] encodes an array column or parameter. *)

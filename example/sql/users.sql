@@ -50,8 +50,11 @@ VALUES (:id, :organization_id, :email, :display_name?, :status, :balance);
 SELECT id, email FROM users WHERE id = ANY(:ids);
 
 -- name: PutTagSet :exec
-INSERT INTO tag_sets (id, owner, tags, scores, states)
-VALUES (:id, :owner, :tags, :scores, :states);
+INSERT INTO tag_sets (id, owner, tags, scores, states, meta)
+VALUES (:id, :owner, :tags, :scores, :states, :meta)
+ON CONFLICT (id) DO UPDATE
+  SET tags = excluded.tags, scores = excluded.scores,
+      states = excluded.states, meta = excluded.meta;
 
 -- name: GetTagSet :one
-SELECT tags, scores, states FROM tag_sets WHERE id = :id;
+SELECT tags, scores, states, meta FROM tag_sets WHERE id = :id;

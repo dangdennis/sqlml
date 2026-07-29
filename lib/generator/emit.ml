@@ -1,4 +1,4 @@
-(* Turning described queries into OCaml source.
+(** Turning described queries into OCaml source.
 
    One module per queries directory (not per .sql file), so shared model types
    work across files and callers need a single [open Db]. *)

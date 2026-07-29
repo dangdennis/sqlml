@@ -1,4 +1,4 @@
-(* Parsing .sql files into named queries.
+(** Parsing .sql files into named queries.
 
    Authoring model is sqlc's: many queries per file, each introduced by a header
    comment carrying a name and a cardinality.

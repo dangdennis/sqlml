@@ -8,8 +8,8 @@ let version = "0.1.0"
 (* ---------- shared arguments ---------- *)
 
 let queries =
-  let doc = "Directory containing .sql files. Every *.sql directly inside it is read." in
-  Arg.(required & opt (some dir) None & info [ "q"; "queries" ] ~docv:"DIR" ~doc)
+  let doc = "Directory to search for .sql files, recursively." in
+  Arg.(value & opt dir "sql" & info [ "q"; "queries" ] ~docv:"DIR" ~doc)
 
 let out =
   let doc = "Directory to write the generated module into." in

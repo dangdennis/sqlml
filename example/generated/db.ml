@@ -25,6 +25,11 @@ let user_status_of_row r i =
   try user_status_of_string s
   with _ -> raise (Sqlml.Row.Bad { column = i; expected = "user_status"; got = s })
 
+type count_users_by_status_row =
+  { status : user_status
+  ; n : int
+  }
+
 type get_user_row =
   { id : Uuidm.t
   ; email : string
@@ -65,7 +70,30 @@ type get_tag_set_row =
   { tags : string list
   ; scores : int list
   ; states : user_status list
+  ; meta : Yojson.Safe.t
   }
+
+module Count_users_by_status = struct
+  type params = unit
+  type row = count_users_by_status_row
+
+  let name = "CountUsersByStatus"
+  let sql = "SELECT status, count(*) AS \"n!\" FROM users GROUP BY status"
+
+  let encode () = []
+
+  let decode r : count_users_by_status_row =
+    { status = user_status_of_row r 0
+    ; n = Sqlml.Row.int r 1
+    }
+
+  let columns = 2
+
+  let cardinality = Sqlml.Query.Many
+end
+
+let count_users_by_status conn = Sqlml.fetch_all {Count_users_by_status} conn ()
+let count_users_by_status_exn conn = Sqlml.or_raise (count_users_by_status conn)
 
 module Get_user = struct
   type params =
@@ -281,10 +309,11 @@ module Put_tag_set = struct
     ; tags : string list
     ; scores : int list
     ; states : user_status list
+    ; meta : Yojson.Safe.t
     }
 
   let name = "PutTagSet"
-  let sql = "INSERT INTO tag_sets (id, owner, tags, scores, states)\nVALUES ($1, $2, $3, $4, $5)"
+  let sql = "INSERT INTO tag_sets (id, owner, tags, scores, states, meta)\nVALUES ($1, $2, $3, $4, $5, $6)\nON CONFLICT (id) DO UPDATE\n  SET tags = excluded.tags, scores = excluded.scores,\n      states = excluded.states, meta = excluded.meta"
 
   let encode (p : params) =
     [ Sqlml.Value.of_uuid p.id
@@ -292,13 +321,14 @@ module Put_tag_set = struct
     ; (Sqlml.Value.of_list Sqlml.Value.Print.string) p.tags
     ; (Sqlml.Value.of_list Sqlml.Value.Print.int) p.scores
     ; (Sqlml.Value.of_list user_status_to_string) p.states
+    ; Sqlml.Value.of_json p.meta
     ]
 
   let cardinality = Sqlml.Query.Exec
 end
 
-let put_tag_set conn ~id ~owner ~tags ~scores ~states = Sqlml.exec {Put_tag_set} conn { Put_tag_set.id; owner; tags; scores; states }
-let put_tag_set_exn conn ~id ~owner ~tags ~scores ~states = Sqlml.or_raise (put_tag_set conn ~id ~owner ~tags ~scores ~states)
+let put_tag_set conn ~id ~owner ~tags ~scores ~states ~meta = Sqlml.exec {Put_tag_set} conn { Put_tag_set.id; owner; tags; scores; states; meta }
+let put_tag_set_exn conn ~id ~owner ~tags ~scores ~states ~meta = Sqlml.or_raise (put_tag_set conn ~id ~owner ~tags ~scores ~states ~meta)
 
 module Get_tag_set = struct
   type params =
@@ -307,7 +337,7 @@ module Get_tag_set = struct
   type row = get_tag_set_row
 
   let name = "GetTagSet"
-  let sql = "SELECT tags, scores, states FROM tag_sets WHERE id = $1"
+  let sql = "SELECT tags, scores, states, meta FROM tag_sets WHERE id = $1"
 
   let encode (p : params) =
     [ Sqlml.Value.of_uuid p.id
@@ -317,9 +347,10 @@ module Get_tag_set = struct
     { tags = (Sqlml.Row.list Sqlml.Row.Elem.string) r 0
     ; scores = (Sqlml.Row.list Sqlml.Row.Elem.int) r 1
     ; states = (Sqlml.Row.list user_status_of_string) r 2
+    ; meta = Sqlml.Row.json r 3
     }
 
-  let columns = 3
+  let columns = 4
 
   let cardinality = Sqlml.Query.One
 end
