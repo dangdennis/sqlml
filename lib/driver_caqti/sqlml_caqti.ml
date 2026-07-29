@@ -166,5 +166,6 @@ module Pool = struct
   (* Borrow a connection and run [f] inside a transaction on it. Pinning to one
      connection is exactly why this belongs on the pool rather than being
      assembled by the caller. *)
-  let transaction pool f = use pool (fun conn -> Sqlml.transaction conn f)
+  let transaction ?isolation ?retry pool f =
+    use pool (fun conn -> Sqlml.transaction ?isolation ?retry conn f)
 end

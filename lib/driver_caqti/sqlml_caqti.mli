@@ -47,7 +47,11 @@ module Pool : sig
   (** Borrow a connection for the duration of [f]. *)
 
   val transaction :
-    t -> (Sqlml.conn -> ('a, Sqlml.Error.t) result) -> ('a, Sqlml.Error.t) result
+    ?isolation:[ `Read_committed | `Repeatable_read | `Serializable ] ->
+    ?retry:int ->
+    t ->
+    (Sqlml.conn -> ('a, Sqlml.Error.t) result) ->
+    ('a, Sqlml.Error.t) result
   (** Borrow a connection and run [f] on it inside a transaction. Pinning to one
       connection is why this belongs on the pool rather than being assembled by the
       caller. See {!Sqlml.transaction} for commit and rollback behaviour. *)

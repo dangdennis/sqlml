@@ -41,22 +41,34 @@ val exec : (module Q : Query.EXEC) -> conn -> Q.params -> (int, Error.t) result
 
 (** {1 Transactions} *)
 
-val transaction : conn -> (conn -> ('a, Error.t) result) -> ('a, Error.t) result
-(** [transaction conn f] runs [f] inside BEGIN/COMMIT. It commits when [f] returns [Ok],
-    and rolls back when [f] returns [Error] or raises — an exception is re-raised after
-    the rollback, so [_exn] query functions abort the transaction as you would expect.
+val transaction :
+  ?isolation:[ `Read_committed | `Repeatable_read | `Serializable ] ->
+  ?retry:int ->
+  conn ->
+  (conn -> ('a, Error.t) result) ->
+  ('a, Error.t) result
+(** [transaction conn f] runs [f] inside a transaction: COMMIT when [f] returns [Ok],
+    ROLLBACK when it returns [Error] or raises — the exception is re-raised after the
+    rollback, so [_exn] query functions abort the transaction as you would expect. The
+    handle passed to [f] has the same type as [conn], so every generated query function
+    works inside unchanged.
 
-    The handle passed to [f] has the same type as [conn], so every generated query
-    function works inside a transaction unchanged.
+    Nesting uses savepoints: a [transaction] inside a transaction rolls back only its own
+    work on failure, and the outer transaction continues.
 
-    {b Known gap.} The intent was to give [f] a distinct [tx conn], phantom tagged, so
-    that a nested transaction was a type error and an outer handle could not be used
-    inside the body. That is not expressible here: the tag does not generalise through the
-    modular-explicit query functions, and a binding whose type contains a modular-explicit
-    arrow cannot carry an explicit polymorphic annotation at all — both ['k.] and
-    [type k.] are rejected with "the universal variable would escape its scope". With a
-    single connection nothing is actually unsafe: the outer handle {i is} the same
-    connection, so a statement issued through it is still inside the transaction. The
-    exposure appears only with pooling, and the fix there needs no phantom types — make
-    the pool a distinct type carrying no query operations, so that obtaining a connection
-    requires going through this function. *)
+    [~isolation] sets the isolation level. It is only meaningful at the outermost level;
+    inside an enclosing transaction it raises [Invalid_argument], because PostgreSQL
+    cannot change isolation mid-flight.
+
+    [~retry:n] re-runs the body up to [n] more times on a serialization failure ([40001])
+    or deadlock ([40P01]) — the standard companion to [`Serializable]. Only those two
+    codes retry; anything else would fail identically again. Retries happen at the
+    outermost level only: PostgreSQL dooms the entire transaction on a serialization
+    failure, so an inner error propagates out and the outer attempt re-runs everything.
+    The body must be safe to re-run.
+
+    {[
+    Sqlml.transaction ~isolation:`Serializable ~retry:3 conn @@ fun tx ->
+    let* balance = get_balance tx ~id in
+    set_balance tx ~id ~balance:(debit balance amount)
+    ]} *)

@@ -103,7 +103,7 @@ functions into the decoder and encoder it already emits, so this needs no
 runtime support — `Typemap.t` grows a `Custom` case and the machinery is
 unchanged. sqlc's most requested feature.
 
-## 4. Transactions: isolation and savepoints
+## 4. Transactions: isolation and savepoints — done
 
 `transaction` currently issues a bare `BEGIN`. Two gaps:
 

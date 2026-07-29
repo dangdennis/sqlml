@@ -46,7 +46,13 @@ module type S = sig
   val exec : conn -> sql:string -> params:Value.t list -> (int, error) result
 end
 
-type t = Conn : (module S with type conn = 'c) * 'c -> t
+(* The [int ref] is transaction depth, owned by [Sqlml.transaction]: 0 outside
+   any transaction, incremented per nesting level. It lives here so that the
+   runtime can decide between BEGIN and SAVEPOINT without asking the driver,
+   which could not answer uniformly anyway. *)
+type t = Conn : (module S with type conn = 'c) * 'c * int ref -> t
 
-let make (type c) (module D : S with type conn = c) (c : c) : t = Conn ((module D), c)
-let name (Conn ((module D), _)) = D.name
+let make (type c) (module D : S with type conn = c) (c : c) : t =
+  Conn ((module D), c, ref 0)
+
+let name (Conn ((module D), _, _)) = D.name

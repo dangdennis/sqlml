@@ -224,6 +224,94 @@ let () =
   ignore fk;
   ignore (Db.delete_user_exn conn ~id:a2);
 
+  (* ---------- nesting: savepoints ---------- *)
+  let n1 = uuid "cccccccc-0000-4000-8000-000000000001" in
+  let n2 = uuid "cccccccc-0000-4000-8000-000000000002" in
+  let n3 = uuid "cccccccc-0000-4000-8000-000000000003" in
+  let mk tx i email =
+    Db.create_user tx ~id:i ~organization_id:org ~email ~status:Db.Active
+      ~balance:(Decimal.of_string "0.00") ()
+  in
+  List.iter (fun i -> ignore (Db.delete_user_exn conn ~id:i)) [ n1; n2; n3 ];
+  (match
+     Sqlml.transaction conn (fun tx ->
+         match mk tx n1 "outer-a@example.com" with
+         | Error e -> Error e
+         | Ok _ ->
+             (* inner failure must roll back only the inner insert *)
+             (match
+                Sqlml.transaction tx (fun inner ->
+                    match mk inner n2 "inner@example.com" with
+                    | Error e -> Error e
+                    | Ok _ -> Error (Sqlml.Error.Connect "abort inner"))
+              with
+             | Ok _ -> ()
+             | Error _ -> ());
+             mk tx n3 "outer-b@example.com")
+   with
+  | Ok _ ->
+      check "outer survives inner rollback" (Db.get_user_exn conn ~id:n1 <> None);
+      check "inner work rolled back" (Db.get_user_exn conn ~id:n2 = None);
+      check "outer continues after inner rollback" (Db.get_user_exn conn ~id:n3 <> None)
+  | Error e ->
+      print_endline (Sqlml.Error.to_string e);
+      check "nested transaction" false);
+  List.iter (fun i -> ignore (Db.delete_user_exn conn ~id:i)) [ n1; n3 ];
+
+  (* isolation inside an enclosing transaction is a programming error *)
+  (match
+     Sqlml.transaction conn (fun tx ->
+         Sqlml.transaction ~isolation:`Serializable tx (fun _ -> Ok ()))
+   with
+  | exception Invalid_argument _ -> check "nested ~isolation raises Invalid_argument" true
+  | _ -> check "nested ~isolation raises Invalid_argument" false);
+
+  (* ---------- retry: a real serialization failure ---------- *)
+
+  (* Two connections race on one row under REPEATABLE READ: conn2 updates the
+     row after conn1 has taken its snapshot but before conn1 writes, which is a
+     deterministic 40001 "could not serialize access due to concurrent update".
+     The retry re-runs the body on a fresh snapshot, which succeeds. *)
+  let victim = uuid "dddddddd-0000-4000-8000-000000000001" in
+  ignore (Db.delete_user_exn conn ~id:victim);
+  ignore
+    (Db.create_user_exn conn ~id:victim ~organization_id:org ~email:"racer@example.com"
+       ~status:Db.Active ~balance:(Decimal.of_string "0.00") ());
+  let conn2 =
+    match Sqlml_pg.connect (Sqlml_pg.conninfo_of_env ()) with
+    | Ok c -> c
+    | Error e ->
+        print_endline (Sqlml.Error.to_string e);
+        exit 1
+  in
+  let attempts = ref 0 in
+  (match
+     Sqlml.transaction ~isolation:`Repeatable_read ~retry:2 conn (fun tx ->
+         incr attempts;
+         (* take the snapshot *)
+         match Db.get_user tx ~id:victim with
+         | Error e -> Error e
+         | Ok None -> Error (Sqlml.Error.Connect "victim vanished")
+         | Ok (Some _) ->
+             (* on the first attempt only, interfere from the second connection *)
+             if !attempts = 1 then
+               ignore
+                 (Db.set_display_name_exn conn2 ~id:victim ~display_name:"interfered" ());
+             Db.set_display_name tx ~id:victim
+               ~display_name:(Printf.sprintf "attempt-%d" !attempts)
+               ())
+   with
+  | Ok _ ->
+      check "serialization failure retried" (!attempts = 2);
+      check "retry succeeded on fresh snapshot"
+        (match Db.get_user_exn conn ~id:victim with
+        | Some u -> u.Db.name = Some "attempt-2"
+        | None -> false)
+  | Error e ->
+      print_endline (Sqlml.Error.to_string e);
+      check "serialization failure retried" false);
+  ignore (Db.delete_user_exn conn ~id:victim);
+
   if !failures = 0 then print_endline "all good"
   else (
     Printf.printf "%d failure(s)\n" !failures;

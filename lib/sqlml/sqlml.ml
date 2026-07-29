@@ -71,7 +71,7 @@ let decode_fail name (e : exn) =
 
 let run_query (conn : conn) ~name ~sql ~params ~columns =
   match conn with
-  | Driver.Conn ((module D), c) -> (
+  | Driver.Conn ((module D), c, _) -> (
       match D.query c ~sql ~params ~columns with
       | Ok rows -> Ok rows
       | Error (d : Driver.error) ->
@@ -112,7 +112,7 @@ let fetch_one (module Q : Query.ONE) (conn : conn) (p : Q.params) :
 
 let exec (module Q : Query.EXEC) (conn : conn) (p : Q.params) : (int, Error.t) result =
   match conn with
-  | Driver.Conn ((module D), c) -> (
+  | Driver.Conn ((module D), c, _) -> (
       match D.exec c ~sql:Q.sql ~params:(Q.encode p) with
       | Ok n -> Ok n
       | Error (d : Driver.error) ->
@@ -134,7 +134,7 @@ let exec (module Q : Query.EXEC) (conn : conn) (p : Q.params) : (int, Error.t) r
 
 let statement (conn : conn) sql =
   match conn with
-  | Driver.Conn ((module D), c) -> (
+  | Driver.Conn ((module D), c, _) -> (
       match D.exec c ~sql ~params:[] with
       | Ok _ -> Ok ()
       | Error (d : Driver.error) ->
@@ -153,18 +153,80 @@ let statement (conn : conn) sql =
                }))
 
 (* Commits when [f] returns [Ok], rolls back when it returns [Error] or raises.
-   An exception is re-raised after the rollback, so [_exn] query functions work
-   inside the body and abort the transaction as you would expect. *)
-let transaction (conn : conn) f =
-  match statement conn "BEGIN" with
-  | Error e -> Error e
-  | Ok () -> (
-      let tx = conn in
-      match f tx with
-      | Ok v -> ( match statement conn "COMMIT" with Ok () -> Ok v | Error e -> Error e)
-      | Error e ->
-          ignore (statement conn "ROLLBACK");
-          Error e
-      | exception e ->
-          ignore (statement conn "ROLLBACK");
-          raise e)
+
+   Nesting works via savepoints: a [transaction] on a handle already inside a
+   transaction issues SAVEPOINT/RELEASE rather than BEGIN/COMMIT, so an inner
+   failure rolls back only the inner work. Depth is tracked on the handle.
+
+   [?retry] re-runs the body on a serialization failure (40001) or deadlock
+   (40P01), the standard pattern for [`Serializable]. Only those two: a
+   connection failure would fail again on the same dead handle, and anything
+   else is deterministic. Retry applies only at the outermost level, because
+   PostgreSQL dooms the whole transaction on a serialization failure -- an
+   inner body cannot usefully re-run, so the error propagates to the outer
+   attempt, which re-runs everything. A raised [Sql_error] with a retryable
+   code is treated the same as returning it. *)
+let transaction ?isolation ?(retry = 0) (conn : conn) f =
+  let (Driver.Conn (_, _, depth)) = conn in
+  if !depth > 0 then begin
+    if isolation <> None then
+      invalid_arg
+        "Sqlml.transaction: ~isolation cannot be changed inside an enclosing transaction";
+    let sp = Printf.sprintf "sqlml_savepoint_%d" !depth in
+    match statement conn ("SAVEPOINT " ^ sp) with
+    | Error e -> Error e
+    | Ok () -> (
+        incr depth;
+        let out = match f conn with r -> `Returned r | exception e -> `Raised e in
+        decr depth;
+        match out with
+        | `Returned (Ok v) -> (
+            match statement conn ("RELEASE SAVEPOINT " ^ sp) with
+            | Ok () -> Ok v
+            | Error e -> Error e)
+        | `Returned (Error e) ->
+            ignore (statement conn ("ROLLBACK TO SAVEPOINT " ^ sp));
+            Error e
+        | `Raised e ->
+            ignore (statement conn ("ROLLBACK TO SAVEPOINT " ^ sp));
+            raise e)
+  end
+  else begin
+    let begin_sql =
+      match isolation with
+      | None -> "BEGIN"
+      | Some `Read_committed -> "BEGIN ISOLATION LEVEL READ COMMITTED"
+      | Some `Repeatable_read -> "BEGIN ISOLATION LEVEL REPEATABLE READ"
+      | Some `Serializable -> "BEGIN ISOLATION LEVEL SERIALIZABLE"
+    in
+    let retryable e =
+      match Error.sqlstate e with
+      | Some s -> Sqlstate.is_serialization_failure s
+      | None -> false
+    in
+    let rec attempt remaining =
+      match statement conn begin_sql with
+      | Error e -> Error e
+      | Ok () -> (
+          incr depth;
+          let out = match f conn with r -> `Returned r | exception e -> `Raised e in
+          decr depth;
+          match out with
+          | `Returned (Ok v) -> (
+              match statement conn "COMMIT" with
+              | Ok () -> Ok v
+              (* a failed COMMIT has already aborted the transaction server-side *)
+              | Error e when retryable e && remaining > 0 -> attempt (remaining - 1)
+              | Error e -> Error e)
+          | `Returned (Error e) ->
+              ignore (statement conn "ROLLBACK");
+              if retryable e && remaining > 0 then attempt (remaining - 1) else Error e
+          | `Raised (Sql_error e) when retryable e && remaining > 0 ->
+              ignore (statement conn "ROLLBACK");
+              attempt (remaining - 1)
+          | `Raised e ->
+              ignore (statement conn "ROLLBACK");
+              raise e)
+    in
+    attempt retry
+  end

@@ -216,13 +216,18 @@ exposes.
 ## Transactions
 
 ```ocaml
-Sqlml.transaction conn (fun tx ->
-  let* _ = create_user tx ~id ~email () in
-  set_display_name tx ~id ~display_name ())
+Sqlml.transaction ~isolation:`Serializable ~retry:3 conn (fun tx ->
+  let* balance = get_balance tx ~id in
+  set_balance tx ~id ~balance:(debit balance amount))
 ```
 
 Commits when the body returns `Ok`, rolls back on `Error` or on an exception,
 which is re-raised. Generated functions take the transaction handle unchanged.
+
+Nesting uses savepoints, so an inner failure rolls back only the inner work.
+`~retry` re-runs the body on a serialization failure or deadlock — the standard
+companion to `` `Serializable`` — and on nothing else, since other errors would
+fail identically again. The body must be safe to re-run.
 
 ## Drivers
 
