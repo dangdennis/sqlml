@@ -39,6 +39,17 @@ type users_row =
   ; created_at : Ptime.t
   }
 
+type get_users_by_ids_row =
+  { id : Uuidm.t
+  ; email : string
+  }
+
+type get_tag_set_row =
+  { tags : string list
+  ; scores : int list
+  ; states : user_status list
+  }
+
 module Get_user : sig
   type params =
     { id : Uuidm.t
@@ -152,4 +163,51 @@ val create_user : Sqlml.conn -> id:Uuidm.t -> organization_id:Uuidm.t -> email:s
 (** Raising {!create_user}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
 val create_user_exn : Sqlml.conn -> id:Uuidm.t -> organization_id:Uuidm.t -> email:string -> status:user_status -> balance:Decimal.t -> ?display_name:string -> unit -> int
+
+module Get_users_by_ids : sig
+  type params =
+    { ids : Uuidm.t list
+    }
+
+  include Sqlml.Query.MANY with type params := params and type row = get_users_by_ids_row
+end
+
+(** An array parameter: = ANY(...) is how you write a dynamic IN list. *)
+val get_users_by_ids : Sqlml.conn -> ids:Uuidm.t list -> (get_users_by_ids_row list, Sqlml.Error.t) result
+
+(** Raising {!get_users_by_ids}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+val get_users_by_ids_exn : Sqlml.conn -> ids:Uuidm.t list -> get_users_by_ids_row list
+
+module Put_tag_set : sig
+  type params =
+    { id : Uuidm.t
+    ; owner : Uuidm.t
+    ; tags : string list
+    ; scores : int list
+    ; states : user_status list
+    }
+
+  include Sqlml.Query.EXEC with type params := params
+end
+
+val put_tag_set : Sqlml.conn -> id:Uuidm.t -> owner:Uuidm.t -> tags:string list -> scores:int list -> states:user_status list -> (int, Sqlml.Error.t) result
+
+(** Raising {!put_tag_set}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+val put_tag_set_exn : Sqlml.conn -> id:Uuidm.t -> owner:Uuidm.t -> tags:string list -> scores:int list -> states:user_status list -> int
+
+module Get_tag_set : sig
+  type params =
+    { id : Uuidm.t
+    }
+
+  include Sqlml.Query.ONE with type params := params and type row = get_tag_set_row
+end
+
+val get_tag_set : Sqlml.conn -> id:Uuidm.t -> (get_tag_set_row option, Sqlml.Error.t) result
+
+(** Raising {!get_tag_set}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+val get_tag_set_exn : Sqlml.conn -> id:Uuidm.t -> get_tag_set_row option
 

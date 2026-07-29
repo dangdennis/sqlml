@@ -15,8 +15,8 @@ type field =
 
 let resolve_column (q : Parse.t) (c : Describe.column) =
   match
-    Typemap.of_pg ~type_name:c.Describe.type_name ~enum_labels:c.Describe.enum_labels
-      ~nullable:c.Describe.nullable
+    Typemap.of_pg ~type_name:c.Describe.type_name ~elem_type_name:c.Describe.elem_type_name
+      ~enum_labels:c.Describe.enum_labels ~nullable:c.Describe.nullable
   with
   | Some t -> Ok { fname = c.Describe.name; ftype = t; ord = c.Describe.table_col }
   | None ->
@@ -26,8 +26,8 @@ let resolve_column (q : Parse.t) (c : Describe.column) =
 
 let resolve_param (q : Parse.t) (p : Describe.param) =
   match
-    Typemap.of_pg ~type_name:p.Describe.ptype_name ~enum_labels:p.Describe.penum_labels
-      ~nullable:p.Describe.pnullable
+    Typemap.of_pg ~type_name:p.Describe.ptype_name ~elem_type_name:p.Describe.pelem_type_name
+      ~enum_labels:p.Describe.penum_labels ~nullable:p.Describe.pnullable
   with
   | Some t -> Ok { fname = p.Describe.pname; ftype = t; ord = 0 }
   | None ->
@@ -79,7 +79,10 @@ let resolve (d : Describe.described) =
 let collect_enums resolved =
   let tbl = Hashtbl.create 8 in
   let add = function
-    | Typemap.Enum (n, labels) | Typemap.Option (Typemap.Enum (n, labels)) ->
+    | Typemap.Enum (n, labels)
+    | Typemap.Option (Typemap.Enum (n, labels))
+    | Typemap.Array (Typemap.Enum (n, labels))
+    | Typemap.Option (Typemap.Array (Typemap.Enum (n, labels))) ->
       (match Hashtbl.find_opt tbl n with
        | Some existing when existing <> labels ->
          (* same type name with different labels cannot happen from one database *)
@@ -296,10 +299,14 @@ let generate ~src (described : Describe.described list) =
       bprintf ml "\n";
       bprintf ml "let %s_to_value x = Sqlml.Value.of_string (%s_to_string x)\n" name name;
       bprintf ml "let _ = %s_to_value\n\n" name;
-      bprintf ml "let %s_of_row r i =\n  match Sqlml.Row.string r i with\n" name;
+      bprintf ml "let %s_of_string = function\n" name;
       List.iter (fun l -> bprintf ml "  | %S -> %s\n" l (Typemap.constructor_of_label l)) labels;
+      bprintf ml "  | o -> failwith (%S ^ \": \" ^ o)\n\n" name;
+      bprintf ml "let %s_of_row r i =\n" name;
+      bprintf ml "  let s = Sqlml.Row.string r i in\n";
+      bprintf ml "  try %s_of_string s\n" name;
       bprintf ml
-        "  | o -> raise (Sqlml.Row.Bad { column = i; expected = %S; got = o })\n\n" name)
+        "  with _ -> raise (Sqlml.Row.Bad { column = i; expected = %S; got = s })\n\n" name)
     enums;
   List.iter
     (fun (name, fields) ->

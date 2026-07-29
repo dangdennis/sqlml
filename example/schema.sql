@@ -16,3 +16,12 @@ CREATE TABLE posts (
   title     text NOT NULL,
   body      text
 );
+
+-- Arrays: text[], int[], and an array of an enum.
+CREATE TABLE tag_sets (
+  id     uuid PRIMARY KEY,
+  owner  uuid NOT NULL,
+  tags   text[] NOT NULL DEFAULT '{}',
+  scores int[] NOT NULL DEFAULT '{}',
+  states user_status[] NOT NULL DEFAULT '{}'
+);

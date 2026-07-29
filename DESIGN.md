@@ -308,3 +308,29 @@ different needs.
 - **SQLite.** `Driver.placeholder` exists to abstract `$1` vs `?`, but SQLite
   has no Parse/Describe equivalent, so type inference there needs a different
   strategy than Postgres.
+
+## Arrays
+
+`text[]`, `int[]`, `uuid[]` and arrays of enums map to OCaml lists. Detection is
+from `pg_type`: an array has `typcategory = 'A'` and a `typelem` pointing at its
+element type, and for an array of an enum the labels live on the element.
+
+Arrays also give you dynamic IN lists, which is the common reason to want them:
+
+```sql
+-- name: GetUsersByIds :many
+SELECT id, email FROM users WHERE id = ANY(:ids);
+```
+```ocaml
+val get_users_by_ids : Sqlml.conn -> ids:Uuidm.t list -> (get_users_by_ids_row list, _) result
+```
+
+Values cross as Postgres's `{a,b,c}` literal, so `Row.list` and `Value.of_list`
+implement its quoting rules: an element is quoted when it is empty, contains a
+delimiter, brace, quote, backslash or whitespace, or would otherwise read back
+as the literal NULL. The round-trip is tested against all of those.
+
+Two deliberate limits. **Nested arrays are rejected** rather than flattened.
+**A NULL element is an error**, because Postgres does not report whether array
+elements are nullable — inventing an `option` there would be guessing, and
+silently dropping it would be worse.

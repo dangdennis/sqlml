@@ -19,6 +19,7 @@ type column =
   { name : string (* alias with any !/? stripped *)
   ; type_oid : int
   ; type_name : string
+  ; elem_type_name : string option (* Some when the type is an array *)
   ; table_oid : int (* 0 when not a plain column reference *)
   ; table_col : int (* attnum; 0 when table_oid is 0 *)
   ; nullable : bool
@@ -30,6 +31,7 @@ type param =
   ; pname : string
   ; ptype_oid : int
   ; ptype_name : string
+  ; pelem_type_name : string option
   ; penum_labels : string list
   ; pnullable : bool (* from a trailing ? on the placeholder; see Parse.param *)
   }
@@ -86,14 +88,36 @@ let split_override name =
 
 let quote_ints xs = String.concat "," (List.map string_of_int xs)
 
-let type_names conn oids =
+(* name, element type name (arrays only), and element oid, in one pass. An array
+   type in Postgres has typcategory 'A' and a typelem pointing at its element
+   type -- text[] is a distinct type named _text whose typelem is text. *)
+type type_info =
+  { tname : string
+  ; telem_name : string option
+  ; telem_oid : int
+  }
+
+let type_infos conn oids =
   if oids = [] then Ok []
   else
     let* rows =
       Pq.query conn
-        (Printf.sprintf "select oid, typname from pg_type where oid in (%s)" (quote_ints oids))
+        (Printf.sprintf
+           "select t.oid, t.typname, t.typcategory, coalesce(e.typname, ''), \
+            coalesce(t.typelem, 0) from pg_type t left join pg_type e on e.oid = t.typelem \
+            where t.oid in (%s)"
+           (quote_ints oids))
     in
-    Ok (List.map (fun r -> (int_of_string r.(0), r.(1))) rows)
+    Ok
+      (List.map
+         (fun r ->
+           let is_array = r.(2) = "A" && r.(4) <> "0" in
+           ( int_of_string r.(0)
+           , { tname = r.(1)
+             ; telem_name = (if is_array then Some r.(3) else None)
+             ; telem_oid = (if is_array then int_of_string r.(4) else 0)
+             } ))
+         rows)
 
 let enum_labels conn oids =
   if oids = [] then Ok []
@@ -210,12 +234,23 @@ let describe_all conn (queries : Parse.t list) =
   let all_pairs = uniq (List.concat_map (fun (_, _, cs) -> List.map (fun c -> (c.rtable, c.rcol)) cs) raws) in
   let all_tables = uniq (List.filter (fun t -> t <> 0) (List.map fst all_pairs)) in
   let catalog f = Result.map_error (fun m -> { file = ""; line = 0; qname = ""; message = m }) f in
-  let* tnames = catalog (type_names conn all_type_oids) in
-  let* elabels = catalog (enum_labels conn all_type_oids) in
+  let* tinfos = catalog (type_infos conn all_type_oids) in
+  (* an array of an enum carries its labels on the element type *)
+  let elem_oids = List.filter_map (fun (_, i) -> if i.telem_oid <> 0 then Some i.telem_oid else None) tinfos in
+  let* elabels = catalog (enum_labels conn (uniq (all_type_oids @ elem_oids))) in
   let* nn = catalog (not_null_map conn all_pairs) in
   let* tinfo = catalog (table_info conn all_tables) in
-  let type_name oid = List.assoc_opt oid tnames |> Option.value ~default:"unknown" in
-  let labels oid = List.assoc_opt oid elabels |> Option.value ~default:[] in
+  let info oid =
+    List.assoc_opt oid tinfos |> Option.value ~default:{ tname = "unknown"; telem_name = None; telem_oid = 0 }
+  in
+  let type_name oid = (info oid).tname in
+  let elem_name oid = (info oid).telem_name in
+  (* for an array, the interesting labels are the element type's *)
+  let labels oid =
+    let i = info oid in
+    let key = if i.telem_oid <> 0 then i.telem_oid else oid in
+    List.assoc_opt key elabels |> Option.value ~default:[]
+  in
   let attnotnull t c = List.assoc_opt (t, c) nn |> Option.value ~default:false in
   Ok
     (List.map
@@ -232,6 +267,7 @@ let describe_all conn (queries : Parse.t list) =
                { name = c.rname
                ; type_oid = c.rtype
                ; type_name = type_name c.rtype
+               ; elem_type_name = elem_name c.rtype
                ; table_oid = c.rtable
                ; table_col = c.rcol
                ; nullable
@@ -267,6 +303,7 @@ let describe_all conn (queries : Parse.t list) =
                     | None -> Printf.sprintf "arg%d" (i + 1))
                ; ptype_oid = oid
                ; ptype_name = type_name oid
+               ; pelem_type_name = elem_name oid
                ; penum_labels = labels oid
                ; pnullable = (match decl with Some p -> p.Parse.nullable | None -> false)
                })

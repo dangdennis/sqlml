@@ -109,5 +109,44 @@ let () =
    | _ -> check "generated query inside tx sees its own write" false);
   ignore (Db.delete_user_exn conn ~id);
 
+  (* ---------- arrays ---------- *)
+
+  let tag_id = uuid "7a1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d" in
+  (* Elements that exercise every quoting rule Postgres has: a delimiter, a
+     quote, braces, a backslash, whitespace, the empty string, and the literal
+     text NULL which must not be read back as a null element. *)
+  let tricky = [ "plain"; "a,b"; "has \"quote\""; "{braces}"; "back\\slash"; "sp ace"; ""; "NULL" ] in
+  check "array insert"
+    (Db.put_tag_set_exn conn ~id:tag_id ~owner:org ~tags:tricky ~scores:[ 1; -2; 30 ]
+       ~states:[ Db.Active; Db.Banned; Db.Active ]
+     = 1);
+  (match Db.get_tag_set_exn conn ~id:tag_id with
+   | None -> check "array round-trip" false
+   | Some t ->
+     check "text[] round-trips exactly" (t.Db.tags = tricky);
+     check "int[] round-trips" (t.Db.scores = [ 1; -2; 30 ]);
+     check "enum[] decodes to variants" (t.Db.states = [ Db.Active; Db.Banned; Db.Active ]));
+
+  (* empty arrays are not the same as NULL *)
+  let empty_id = uuid "8b2c3d4e-5f6a-4b7c-9d0e-1f2a3b4c5d6e" in
+  ignore (Db.put_tag_set_exn conn ~id:empty_id ~owner:org ~tags:[] ~scores:[] ~states:[]);
+  (match Db.get_tag_set_exn conn ~id:empty_id with
+   | Some t -> check "empty array round-trips" (t.Db.tags = [] && t.Db.scores = [])
+   | None -> check "empty array round-trips" false);
+
+  (* an array parameter: = ANY(...) as a dynamic IN list *)
+  let a = uuid "11111111-1111-4111-8111-111111111111" in
+  let b = uuid "22222222-2222-4222-8222-222222222222" in
+  List.iter
+    (fun (i, e) ->
+      ignore
+        (Db.create_user_exn conn ~id:i ~organization_id:org ~email:e ~status:Db.Active
+           ~balance:(Decimal.of_string "0.00") ()))
+    [ (a, "any-a@example.com"); (b, "any-b@example.com") ];
+  let found = Db.get_users_by_ids_exn conn ~ids:[ a; b ] in
+  check "= ANY(array param) matches both" (List.length found = 2);
+  check "= ANY with empty array returns nothing" (Db.get_users_by_ids_exn conn ~ids:[] = []);
+  List.iter (fun i -> ignore (Db.delete_user_exn conn ~id:i)) [ a; b ];
+
   if !failures = 0 then print_endline "all good"
   else (Printf.printf "%d failure(s)\n" !failures; exit 1)

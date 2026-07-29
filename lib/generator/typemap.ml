@@ -11,6 +11,7 @@ type t =
   | Ptime
   | Decimal
   | Enum of string * string list (* ocaml type name, labels in sort order *)
+  | Array of t
   | Option of t
 
 let rec ocaml_type = function
@@ -23,6 +24,7 @@ let rec ocaml_type = function
   | Ptime -> "Ptime.t"
   | Decimal -> "Decimal.t"
   | Enum (n, _) -> n
+  | Array t -> ocaml_type t ^ " list"
   | Option t -> ocaml_type t ^ " option"
 
 (* A function of type [Sqlml.Row.t -> int -> _] *)
@@ -36,7 +38,22 @@ let rec decoder = function
   | Ptime -> "Sqlml.Row.ptime"
   | Decimal -> "Sqlml.Row.decimal"
   | Enum (n, _) -> n ^ "_of_row"
+  | Array t -> Printf.sprintf "(Sqlml.Row.list %s)" (elem_parser t)
   | Option t -> Printf.sprintf "(Sqlml.Row.option %s)" (decoder t)
+
+(* Array elements arrive as raw text, so they need [string -> _] parsers rather
+   than the row-indexing decoders above. *)
+and elem_parser = function
+  | Int -> "Sqlml.Row.Elem.int"
+  | Float -> "Sqlml.Row.Elem.float"
+  | Bool -> "Sqlml.Row.Elem.bool"
+  | String | Bytes -> "Sqlml.Row.Elem.string"
+  | Uuid -> "Sqlml.Row.Elem.uuid"
+  | Ptime -> "Sqlml.Row.Elem.ptime"
+  | Decimal -> "Sqlml.Row.Elem.decimal"
+  | Enum (n, _) -> n ^ "_of_string"
+  | Array _ -> "(fun _ -> failwith \"nested arrays are not supported\")"
+  | Option t -> elem_parser t
 
 (* A function of type [_ -> Sqlml.Value.t] *)
 let rec encoder = function
@@ -49,7 +66,20 @@ let rec encoder = function
   | Ptime -> "Sqlml.Value.of_ptime"
   | Decimal -> "Sqlml.Value.of_decimal"
   | Enum (n, _) -> n ^ "_to_value"
+  | Array t -> Printf.sprintf "(Sqlml.Value.of_list %s)" (elem_printer t)
   | Option t -> Printf.sprintf "(Sqlml.Value.of_option %s)" (encoder t)
+
+and elem_printer = function
+  | Int -> "Sqlml.Value.Print.int"
+  | Float -> "Sqlml.Value.Print.float"
+  | Bool -> "Sqlml.Value.Print.bool"
+  | String | Bytes -> "Sqlml.Value.Print.string"
+  | Uuid -> "Sqlml.Value.Print.uuid"
+  | Ptime -> "Sqlml.Value.Print.ptime"
+  | Decimal -> "Sqlml.Value.Print.decimal"
+  | Enum (n, _) -> n ^ "_to_string"
+  | Array _ -> "(fun _ -> failwith \"nested arrays are not supported\")"
+  | Option t -> elem_printer t
 
 let is_option = function Option _ -> true | _ -> false
 let strip_option = function Option t -> t | t -> t
@@ -73,10 +103,16 @@ let base_of_pg_name = function
   | "inet" | "cidr" | "macaddr" | "macaddr8" -> Some String
   | _ -> None
 
-let of_pg ~type_name ~enum_labels ~nullable =
+let scalar_of name labels =
+  if labels <> [] then Some (Enum (name, labels)) else base_of_pg_name name
+
+(* For an array, [type_name] is Postgres's internal array name (_text) and
+   [elem_type_name] is what we actually map; enum labels belong to the element. *)
+let of_pg ~type_name ~elem_type_name ~enum_labels ~nullable =
   let base =
-    if enum_labels <> [] then Some (Enum (type_name, enum_labels))
-    else base_of_pg_name type_name
+    match elem_type_name with
+    | Some e -> Option.map (fun x -> Array x) (scalar_of e enum_labels)
+    | None -> scalar_of type_name enum_labels
   in
   Option.map (fun b -> if nullable then Option b else b) base
 

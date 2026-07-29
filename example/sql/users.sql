@@ -44,3 +44,14 @@ UPDATE users SET display_name = :display_name? WHERE id = :id;
 -- display_name is nullable, so it becomes an optional argument.
 INSERT INTO users (id, organization_id, email, display_name, status, balance)
 VALUES (:id, :organization_id, :email, :display_name?, :status, :balance);
+
+-- name: GetUsersByIds :many
+-- An array parameter: = ANY(...) is how you write a dynamic IN list.
+SELECT id, email FROM users WHERE id = ANY(:ids);
+
+-- name: PutTagSet :exec
+INSERT INTO tag_sets (id, owner, tags, scores, states)
+VALUES (:id, :owner, :tags, :scores, :states);
+
+-- name: GetTagSet :one
+SELECT tags, scores, states FROM tag_sets WHERE id = :id;

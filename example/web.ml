@@ -93,6 +93,20 @@ let () =
      let still_works = unwrap "after-rollback" (handle_roster pool) in
      Printf.printf "duplicate: rejected; pool still healthy (%d users)\n" (List.length still_works));
 
+  (* arrays through the Caqti driver, not just libpq *)
+  let tag_id = uuid "9c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f" in
+  let tags = [ "a,b"; "plain"; "" ] in
+  (match
+     Sqlml_caqti.Pool.use pool (fun c ->
+         let* _ = put_tag_set c ~id:tag_id ~owner:org ~tags ~scores:[ 7; 8 ] ~states:[ Active ] in
+         get_tag_set c ~id:tag_id)
+   with
+   | Ok (Some t) ->
+     Printf.printf "arrays   : tags=%b scores=%b states=%b\n" (t.tags = tags)
+       (t.scores = [ 7; 8 ]) (t.states = [ Active ])
+   | Ok None -> print_endline "arrays   : missing"
+   | Error e -> Printf.printf "arrays   : %s\n" (Sqlml.Error.to_string e));
+
   List.iter
     (fun (id, _, _) -> ignore (Sqlml_caqti.Pool.use pool (fun c -> delete_user c ~id)))
     people

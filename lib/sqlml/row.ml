@@ -100,3 +100,76 @@ let decimal r i =
     with _ -> raise (Bad { column = i; expected = "numeric"; got = s }))
   | Value.Int n -> Decimal.of_int n
   | v -> bad i "numeric" v
+
+(* ---------- arrays ----------
+
+   Postgres hands arrays back as a "{a,b,c}" literal. Elements may be quoted,
+   with backslash escapes inside quotes; an unquoted NULL is a null element.
+   Only one dimension is supported -- a nested "{{..}}" is reported rather than
+   silently flattened. *)
+
+module Elem = struct
+  (* Element parsers operate on the raw text of one array element, unlike the
+     column decoders above which index into a row. *)
+  let string s = s
+  let int s = int_of_string s
+  let float s = float_of_string s
+  let bool s = match s with "t" | "true" | "TRUE" -> true | _ -> false
+  let uuid s = match Uuidm.of_string s with Some u -> u | None -> failwith "uuid"
+  let decimal s = Decimal.of_string s
+  let ptime s = match Ptime.of_rfc3339 ~strict:false (normalize_timestamp s) with
+    | Ok (t, _, _) -> t
+    | Error _ -> failwith "timestamp"
+end
+
+let parse_array_literal ~column s =
+  let bad msg = raise (Bad { column; expected = "array"; got = msg ^ ": " ^ s }) in
+  let s = String.trim s in
+  if String.length s < 2 || s.[0] <> '{' || s.[String.length s - 1] <> '}' then
+    bad "not an array literal";
+  let inner = String.sub s 1 (String.length s - 2) in
+  if String.trim inner = "" then []
+  else begin
+    let out = ref [] in
+    let buf = Buffer.create 16 in
+    let i = ref 0 in
+    let len = String.length inner in
+    let quoted = ref false in
+    let was_quoted = ref false in
+    let flush () =
+      let raw = Buffer.contents buf in
+      let v = if (not !was_quoted) && String.lowercase_ascii (String.trim raw) = "null" then None
+              else Some (if !was_quoted then raw else String.trim raw) in
+      out := v :: !out;
+      Buffer.clear buf;
+      was_quoted := false
+    in
+    while !i < len do
+      let c = inner.[!i] in
+      if !quoted then begin
+        if c = '\\' && !i + 1 < len then (Buffer.add_char buf inner.[!i + 1]; i := !i + 2)
+        else if c = '"' then (quoted := false; incr i)
+        else (Buffer.add_char buf c; incr i)
+      end
+      else if c = '"' then (quoted := true; was_quoted := true; incr i)
+      else if c = '{' then bad "multidimensional arrays are not supported"
+      else if c = ',' then (flush (); incr i)
+      else (Buffer.add_char buf c; incr i)
+    done;
+    flush ();
+    List.rev !out
+  end
+
+(* [Row.list Elem.int r 2] decodes an array column into a list. A NULL element
+   is an error rather than silently dropped: Postgres does not report whether
+   elements are nullable, so the honest default is to reject. *)
+let list parse r i =
+  match get r i with
+  | Value.Text s ->
+    parse_array_literal ~column:i s
+    |> List.map (function
+         | None -> raise (Bad { column = i; expected = "non-null array element"; got = "NULL" })
+         | Some e -> (
+           try parse e
+           with _ -> raise (Bad { column = i; expected = "array element"; got = e })))
+  | v -> bad i "array" v
