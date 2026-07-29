@@ -34,21 +34,19 @@ compiles; the generator's job is to produce it byte-for-byte from
 
 ## Toolchain
 
-Modular explicits are **not in any released OCaml**. This project requires the
-`samsa1/ocaml` fork:
+OCaml 5.5.0 or later. Modular explicits landed upstream in 5.5.0 as
+module-dependent functions, so no compiler fork is needed:
 
 ```bash
-opam switch create modexp --empty
-opam pin add --yes --no-action --switch modexp \
-  "ocaml-variants.5.3.0+modular-explicit" \
-  "git+https://github.com/samsa1/ocaml#5.3.0+modular-explicit"
-opam install --yes --switch modexp "ocaml-variants.5.3.0+modular-explicit" dune
+opam switch create sqlml ocaml-base-compiler.5.5.0
 ```
 
-Chose `5.3.0+modular-explicit` over `modular-implicits-5.5.1` (which has both
-explicits and implicits): explicits are what this design wants, 5.3.0 satisfies
-every dependency (`caqti-eio` needs only `ocaml >= 5.0.0`), and it is the least
-experimental branch that has the feature.
+Earlier revisions of this project were built on `samsa1/ocaml`'s
+`5.3.0+modular-explicit` branch, which used a brace binder (`{M : S}`).
+Upstream landed with `(module M : S)` instead, which has the pleasant property
+that the *term* syntax is ordinary OCaml -- `let f (module M : S) x` and
+`f (module Foo) x` were already valid -- and only the *type*
+`(module M : S) -> t[M]` is new, being dependent on the module argument.
 
 ## Development database
 

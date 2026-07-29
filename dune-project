@@ -21,7 +21,7 @@
  \n the query interface, transactions, and the driver boundary. It pulls in no\
  \n database client of its own -- add sqlml-postgresql or sqlml-caqti for that.")
  (depends
-  (ocaml (>= 5.3.0))
+  (ocaml (>= 5.5.0))
   (dune (>= 3.16))
   (ptime (>= 1.0.0))
   (uuidm (>= 0.9.8))
@@ -38,7 +38,7 @@
  \n PQftable and PQftablecol, which are what tell it a result column's\
  \n originating table -- the basis for nullability and shared row types.")
  (depends
-  (ocaml (>= 5.3.0))
+  (ocaml (>= 5.5.0))
   (dune (>= 3.16))
   (sqlml (= :version))
   (cmdliner (>= 1.3.0))
@@ -52,7 +52,7 @@
  \n pooling and concurrency. Eio is direct style, so generated signatures are\
  \n unchanged: a query returns a plain result rather than a promise.")
  (depends
-  (ocaml (>= 5.3.0))
+  (ocaml (>= 5.5.0))
   (dune (>= 3.16))
   (sqlml (= :version))
   (caqti (>= 3.0.0))

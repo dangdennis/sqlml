@@ -2,12 +2,12 @@
 
     This file IS the user experience: it is the only thing anyone reads. Note
     what is absent -- no Caqti, no codecs, no [Sqlml.Query] plumbing a caller
-    has to understand, and no modular explicits. The brace syntax appears only
-    in db.ml, written by the generator.
+    has to understand, and no modular explicits. The module argument appears
+    only in db.ml, written by the generator.
 
     Shape C: row types live at the top level, so a single [open Db] gives you
     [u.email] anywhere; the query modules are exported too, so the generic
-    runtime ([Sqlml.fetch_one {Db.Get_user}]) still works for tooling. *)
+    runtime ([Sqlml.fetch_one (module Db.Get_user)]) still works for tooling. *)
 
 type user_status =
   | Active

@@ -25,12 +25,12 @@ val or_raise : ('a, Error.t) result -> 'a
 
 (** {1 Executing queries}
 
-    Call sites read [Sqlml.fetch_one {Db.Get_user} conn { id }]. In practice the
-    generator emits a wrapper per query, so applications never write the braces. *)
+    Call sites read [Sqlml.fetch_one (module Db.Get_user) conn { id }]. In practice the
+    generator emits a wrapper per query, so applications never write the module argument. *)
 
-val fetch_one : {Q : Query.ONE} -> conn -> Q.params -> (Q.row option, Error.t) result
-val fetch_all : {Q : Query.MANY} -> conn -> Q.params -> (Q.row list, Error.t) result
-val exec : {Q : Query.EXEC} -> conn -> Q.params -> (int, Error.t) result
+val fetch_one : (module Q : Query.ONE) -> conn -> Q.params -> (Q.row option, Error.t) result
+val fetch_all : (module Q : Query.MANY) -> conn -> Q.params -> (Q.row list, Error.t) result
+val exec : (module Q : Query.EXEC) -> conn -> Q.params -> (int, Error.t) result
 
 (** {1 Transactions} *)
 

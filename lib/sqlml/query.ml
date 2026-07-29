@@ -5,7 +5,7 @@
 (* Cardinality witnesses.
 
    Without these, ONE and MANY are structurally identical module types and EXEC
-   is a subset of both, so [fetch_all {Get_user}] and [exec {Get_user}] both
+   is a subset of both, so [fetch_all (module Get_user)] and [exec (module Get_user)] both
    typecheck against a query declared :one -- the annotation in the .sql file
    would be a comment rather than a constraint. Requiring a differently-typed
    witness value in each signature is what makes the cardinality real. *)

@@ -93,7 +93,7 @@ let () =
   (* fetch_one: the module argument fixes params to Get_user.params and the
      result to Get_user.row option. Both are inferred here -- no annotations. *)
   let db = conn [ user_row 42 "a@example.com" (Some "Dennis") ] in
-  (match Sqlml.fetch_one {Get_user} db { id = 42 } with
+  (match Sqlml.fetch_one (module Get_user) db { id = 42 } with
    | Ok (Some u) ->
      check "fetch_one decodes" (u.Get_user.id = 42 && u.Get_user.display_name = Some "Dennis")
    | Ok None -> check "fetch_one decodes" false
@@ -101,31 +101,31 @@ let () =
 
   (* NULL flows into the option field *)
   let db = conn [ user_row 7 "b@example.com" None ] in
-  (match Sqlml.fetch_one {Get_user} db { id = 7 } with
+  (match Sqlml.fetch_one (module Get_user) db { id = 7 } with
    | Ok (Some u) -> check "null -> None" (u.Get_user.display_name = None)
    | _ -> check "null -> None" false);
 
   (* :one with more than one row is an error, not a silent truncation *)
   let db = conn [ user_row 1 "x@y.z" None; user_row 2 "p@q.r" None ] in
-  (match Sqlml.fetch_one {Get_user} db { id = 1 } with
+  (match Sqlml.fetch_one (module Get_user) db { id = 1 } with
    | Error (Sqlml.Error.Cardinality _) -> check "one rejects 2 rows" true
    | _ -> check "one rejects 2 rows" false);
 
   (* fetch_all *)
   let db = conn [ [| Sqlml.Value.Int 1; Sqlml.Value.Text "a@b.c" |] ] in
-  (match Sqlml.fetch_all {Search_users} db { pattern = "%@b.c"; limit = 10 } with
+  (match Sqlml.fetch_all (module Search_users) db { pattern = "%@b.c"; limit = 10 } with
    | Ok [ u ] -> check "fetch_all decodes" (u.Search_users.email = "a@b.c")
    | _ -> check "fetch_all decodes" false);
 
   (* a type error in the decoder surfaces as Error.Decode, not an exception *)
   let db = conn [ [| Sqlml.Value.Text "not-an-int"; Sqlml.Value.Text "a@b.c" |] ] in
-  (match Sqlml.fetch_all {Search_users} db { pattern = "%"; limit = 10 } with
+  (match Sqlml.fetch_all (module Search_users) db { pattern = "%"; limit = 10 } with
    | Error (Sqlml.Error.Decode { column = 0; _ }) -> check "decode error is caught" true
    | _ -> check "decode error is caught" false);
 
   (* exec *)
   let db = conn [ user_row 42 "a@b.c" None ] in
-  (match Sqlml.exec {Delete_user} db { id = 42 } with
+  (match Sqlml.exec (module Delete_user) db { id = 42 } with
    | Ok n -> check "exec returns count" (n = 1)
    | Error _ -> check "exec returns count" false);
 

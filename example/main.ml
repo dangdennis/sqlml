@@ -95,13 +95,13 @@ let () =
 
   (* The query modules are still exported, so generic code works. Nothing in an
      application needs this -- it is for tooling, tracing, batch runners. *)
-  (match Sqlml.fetch_one {Db.Get_user} conn { Db.Get_user.id } with
+  (match Sqlml.fetch_one (module Db.Get_user) conn { Db.Get_user.id } with
    | Ok (Some u) -> Printf.printf "generic: %s\n" u.email
    | Ok None -> print_endline "generic: none"
    | Error e -> Printf.printf "generic: failed: %s\n" (Sqlml.Error.to_string e));
 
   (* And the raising variant really does raise. *)
-  (match Sqlml.fetch_one {Db.Get_user} conn { Db.Get_user.id } with
+  (match Sqlml.fetch_one (module Db.Get_user) conn { Db.Get_user.id } with
    | Error e -> raise (Sqlml.Sql_error e)
    | Ok _ -> print_endline "done");
 

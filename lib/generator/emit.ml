@@ -270,7 +270,7 @@ let emit_implementation b r =
       ^ String.concat "; " (List.map (fun f -> f.fname) r.ps)
       ^ " }"
   in
-  bprintf b "let %s conn%s%s = %s {%s} conn %s\n" (fn_name r) uses tail (runner r) m param_value;
+  bprintf b "let %s conn%s%s = %s (module %s) conn %s\n" (fn_name r) uses tail (runner r) m param_value;
   bprintf b "let %s_exn conn%s%s = Sqlml.or_raise (%s conn%s%s)\n\n" (fn_name r) uses tail
     (fn_name r) uses tail
 

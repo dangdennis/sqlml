@@ -122,7 +122,7 @@ module Get_user = struct
   let cardinality = Sqlml.Query.One
 end
 
-let get_user conn ~id = Sqlml.fetch_one {Get_user} conn { Get_user.id }
+let get_user conn ~id = Sqlml.fetch_one (module Get_user) conn { Get_user.id }
 let get_user_exn conn ~id = Sqlml.or_raise (get_user conn ~id)
 
 (* ---------- GetUserByEmail ---------- *)
@@ -142,7 +142,7 @@ module Get_user_by_email = struct
 end
 
 let get_user_by_email conn ~email =
-  Sqlml.fetch_one {Get_user_by_email} conn { Get_user_by_email.email }
+  Sqlml.fetch_one (module Get_user_by_email) conn { Get_user_by_email.email }
 
 let get_user_by_email_exn conn ~email = Sqlml.or_raise (get_user_by_email conn ~email)
 
@@ -188,7 +188,7 @@ module List_user_summaries = struct
 end
 
 let list_user_summaries conn ~organization_id ~limit =
-  Sqlml.fetch_all {List_user_summaries} conn { List_user_summaries.organization_id; limit }
+  Sqlml.fetch_all (module List_user_summaries) conn { List_user_summaries.organization_id; limit }
 
 let list_user_summaries_exn conn ~organization_id ~limit =
   Sqlml.or_raise (list_user_summaries conn ~organization_id ~limit)
@@ -240,7 +240,7 @@ end
 
 let create_user conn ~organization_id ~email ~locale ~timezone ~status ~role
     ~marketing_opt_in ~metadata ?display_name ?given_name ?family_name ?phone () =
-  Sqlml.exec {Create_user} conn
+  Sqlml.exec (module Create_user) conn
     { Create_user.organization_id
     ; email
     ; display_name

@@ -12,7 +12,7 @@ homepage: "https://github.com/dangggdennis/sqlml"
 doc: "https://dangggdennis.github.io/sqlml"
 bug-reports: "https://github.com/dangggdennis/sqlml/issues"
 depends: [
-  "ocaml" {>= "5.3.0"}
+  "ocaml" {>= "5.5.0"}
   "dune" {>= "3.16" & >= "3.16"}
   "sqlml" {= version}
   "caqti" {>= "3.0.0"}

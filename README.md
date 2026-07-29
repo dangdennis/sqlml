@@ -73,7 +73,7 @@ opam install sqlml sqlml-postgresql
 provides the `sqlml` command and a libpq driver. Add `sqlml-caqti` for
 connection pooling.
 
-Requires OCaml with modular explicits.
+Requires OCaml 5.5.0 or later, for modular explicits.
 
 ## Commands
 

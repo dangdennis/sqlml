@@ -92,7 +92,7 @@ module Count_users_by_status = struct
   let cardinality = Sqlml.Query.Many
 end
 
-let count_users_by_status conn = Sqlml.fetch_all {Count_users_by_status} conn ()
+let count_users_by_status conn = Sqlml.fetch_all (module Count_users_by_status) conn ()
 let count_users_by_status_exn conn = Sqlml.or_raise (count_users_by_status conn)
 
 module Get_user = struct
@@ -122,7 +122,7 @@ module Get_user = struct
   let cardinality = Sqlml.Query.One
 end
 
-let get_user conn ~id = Sqlml.fetch_one {Get_user} conn { Get_user.id }
+let get_user conn ~id = Sqlml.fetch_one (module Get_user) conn { Get_user.id }
 let get_user_exn conn ~id = Sqlml.or_raise (get_user conn ~id)
 
 module Search_users = struct
@@ -153,7 +153,7 @@ module Search_users = struct
   let cardinality = Sqlml.Query.Many
 end
 
-let search_users conn ~organization_id ~email_pattern ~limit = Sqlml.fetch_all {Search_users} conn { Search_users.organization_id; email_pattern; limit }
+let search_users conn ~organization_id ~email_pattern ~limit = Sqlml.fetch_all (module Search_users) conn { Search_users.organization_id; email_pattern; limit }
 let search_users_exn conn ~organization_id ~email_pattern ~limit = Sqlml.or_raise (search_users conn ~organization_id ~email_pattern ~limit)
 
 module Count_posts_by_user = struct
@@ -176,7 +176,7 @@ module Count_posts_by_user = struct
   let cardinality = Sqlml.Query.Many
 end
 
-let count_posts_by_user conn = Sqlml.fetch_all {Count_posts_by_user} conn ()
+let count_posts_by_user conn = Sqlml.fetch_all (module Count_posts_by_user) conn ()
 let count_posts_by_user_exn conn = Sqlml.or_raise (count_posts_by_user conn)
 
 module Delete_user = struct
@@ -194,7 +194,7 @@ module Delete_user = struct
   let cardinality = Sqlml.Query.Exec
 end
 
-let delete_user conn ~id = Sqlml.exec {Delete_user} conn { Delete_user.id }
+let delete_user conn ~id = Sqlml.exec (module Delete_user) conn { Delete_user.id }
 let delete_user_exn conn ~id = Sqlml.or_raise (delete_user conn ~id)
 
 module Get_user_full = struct
@@ -225,7 +225,7 @@ module Get_user_full = struct
   let cardinality = Sqlml.Query.One
 end
 
-let get_user_full conn ~id = Sqlml.fetch_one {Get_user_full} conn { Get_user_full.id }
+let get_user_full conn ~id = Sqlml.fetch_one (module Get_user_full) conn { Get_user_full.id }
 let get_user_full_exn conn ~id = Sqlml.or_raise (get_user_full conn ~id)
 
 module Set_display_name = struct
@@ -245,7 +245,7 @@ module Set_display_name = struct
   let cardinality = Sqlml.Query.Exec
 end
 
-let set_display_name conn ~id ?display_name () = Sqlml.exec {Set_display_name} conn { Set_display_name.display_name; id }
+let set_display_name conn ~id ?display_name () = Sqlml.exec (module Set_display_name) conn { Set_display_name.display_name; id }
 let set_display_name_exn conn ~id ?display_name () = Sqlml.or_raise (set_display_name conn ~id ?display_name ())
 
 module Create_user = struct
@@ -273,7 +273,7 @@ module Create_user = struct
   let cardinality = Sqlml.Query.Exec
 end
 
-let create_user conn ~id ~organization_id ~email ~status ~balance ?display_name () = Sqlml.exec {Create_user} conn { Create_user.id; organization_id; email; display_name; status; balance }
+let create_user conn ~id ~organization_id ~email ~status ~balance ?display_name () = Sqlml.exec (module Create_user) conn { Create_user.id; organization_id; email; display_name; status; balance }
 let create_user_exn conn ~id ~organization_id ~email ~status ~balance ?display_name () = Sqlml.or_raise (create_user conn ~id ~organization_id ~email ~status ~balance ?display_name ())
 
 module Get_users_by_ids = struct
@@ -299,7 +299,7 @@ module Get_users_by_ids = struct
   let cardinality = Sqlml.Query.Many
 end
 
-let get_users_by_ids conn ~ids = Sqlml.fetch_all {Get_users_by_ids} conn { Get_users_by_ids.ids }
+let get_users_by_ids conn ~ids = Sqlml.fetch_all (module Get_users_by_ids) conn { Get_users_by_ids.ids }
 let get_users_by_ids_exn conn ~ids = Sqlml.or_raise (get_users_by_ids conn ~ids)
 
 module Put_tag_set = struct
@@ -327,7 +327,7 @@ module Put_tag_set = struct
   let cardinality = Sqlml.Query.Exec
 end
 
-let put_tag_set conn ~id ~owner ~tags ~scores ~states ~meta = Sqlml.exec {Put_tag_set} conn { Put_tag_set.id; owner; tags; scores; states; meta }
+let put_tag_set conn ~id ~owner ~tags ~scores ~states ~meta = Sqlml.exec (module Put_tag_set) conn { Put_tag_set.id; owner; tags; scores; states; meta }
 let put_tag_set_exn conn ~id ~owner ~tags ~scores ~states ~meta = Sqlml.or_raise (put_tag_set conn ~id ~owner ~tags ~scores ~states ~meta)
 
 module Get_tag_set = struct
@@ -355,6 +355,6 @@ module Get_tag_set = struct
   let cardinality = Sqlml.Query.One
 end
 
-let get_tag_set conn ~id = Sqlml.fetch_one {Get_tag_set} conn { Get_tag_set.id }
+let get_tag_set conn ~id = Sqlml.fetch_one (module Get_tag_set) conn { Get_tag_set.id }
 let get_tag_set_exn conn ~id = Sqlml.or_raise (get_tag_set conn ~id)
 
