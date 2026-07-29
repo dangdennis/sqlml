@@ -117,6 +117,8 @@ module Get_user = struct
   let encode ({ id } : params) = [ Sqlml.Value.of_uuid id ]
   let decode = decode_user_columns
 
+  let columns = 25
+
   let cardinality = Sqlml.Query.One
 end
 
@@ -133,6 +135,8 @@ module Get_user_by_email = struct
   let sql = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE email = $1"
   let encode ({ email } : params) = [ Sqlml.Value.of_string email ]
   let decode = decode_user_columns
+
+  let columns = 25
 
   let cardinality = Sqlml.Query.One
 end
@@ -177,6 +181,8 @@ module List_user_summaries = struct
     ; display_name = Sqlml.Row.(option string) r 2
     ; status = user_status_of_row r 3
     }
+
+  let columns = 4
 
   let cardinality = Sqlml.Query.Many
 end

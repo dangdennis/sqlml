@@ -17,8 +17,15 @@ module type S = sig
   (* Dialect placeholder for the n-th parameter, 1-indexed: "$1" / "?" *)
   val placeholder : int -> string
 
+  (* [columns] is how many columns the caller expects. Drivers that discover the
+     shape from the result (libpq) may ignore it; drivers that must declare it
+     up front (Caqti) need it. *)
   val query :
-    conn -> sql:string -> params:Value.t list -> (Value.t array list, string) result
+    conn ->
+    sql:string ->
+    params:Value.t list ->
+    columns:int ->
+    (Value.t array list, string) result
 
   val exec : conn -> sql:string -> params:Value.t list -> (int, string) result
 end

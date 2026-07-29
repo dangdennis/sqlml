@@ -52,6 +52,8 @@ module Get_user = struct
     ; created_at = Sqlml.Row.ptime r 5
     }
 
+  let columns = 6
+
   let cardinality = Sqlml.Query.One
 end
 
@@ -94,6 +96,8 @@ module Search_users = struct
     ; created_at = Sqlml.Row.ptime r 2
     }
 
+  let columns = 3
+
   let cardinality = Sqlml.Query.Many
 end
 
@@ -133,6 +137,8 @@ module Count_posts_by_user = struct
     ; title = Sqlml.Row.(option string) r 1
     ; post_count = Sqlml.Row.int r 2
     }
+
+  let columns = 3
 
   let cardinality = Sqlml.Query.Many
 end

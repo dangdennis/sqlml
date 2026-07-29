@@ -67,21 +67,21 @@ let decode_fail name (e : exn) =
   | Row.Bad { column; expected; got } -> Error.Decode { query = name; column; expected; got }
   | e -> raise e
 
-let run_query (conn : conn) ~name ~sql ~params =
+let run_query (conn : conn) ~name ~sql ~params ~columns =
   match conn with
   | Driver.Conn ((module D), c) -> (
-    match D.query c ~sql ~params with
+    match D.query c ~sql ~params ~columns with
     | Ok rows -> Ok rows
     | Error message -> Error (Error.Execute { query = name; sql; message }))
 
 let fetch_all {Q : Query.MANY} (conn : conn) (p : Q.params) : (Q.row list, Error.t) result =
-  match run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) with
+  match run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns with
   | Error e -> Error e
   | Ok rows -> (
     try Ok (List.map Q.decode rows) with e -> Error (decode_fail Q.name e))
 
 let fetch_one {Q : Query.ONE} (conn : conn) (p : Q.params) : (Q.row option, Error.t) result =
-  match run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) with
+  match run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns with
   | Error e -> Error e
   | Ok [] -> Ok None
   | Ok [ r ] -> ( try Ok (Some (Q.decode r)) with e -> Error (decode_fail Q.name e))

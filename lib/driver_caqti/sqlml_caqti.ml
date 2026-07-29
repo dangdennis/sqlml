@@ -1,0 +1,146 @@
+(* Caqti driver for the sqlml runtime, over Eio.
+
+   Two things make this worth having over the libpq driver: connection pooling,
+   and a concurrency story. Eio is direct style, so nothing in [Driver.S] or in
+   any generated signature changes — a query still returns a plain [result], not
+   a promise.
+
+   Everything crosses the boundary as text. Caqti's Postgres driver sends
+   parameters with unspecified type OIDs and lets the server infer them, so a
+   [uuid], [numeric] or enum parameter works with no cast — verified, not
+   assumed. Values come back as [Value.Text] / [Value.Null] and are parsed by
+   [Sqlml.Row], which is why those decoders accept text. *)
+
+(* ---------- dynamic Caqti types ----------
+
+   Caqti's codecs are static, but sqlml's model is dynamic: a list of values in,
+   an array of values out, with the shape known only at codegen time. Nesting
+   [t2] existentially bridges the two. Nesting rather than [tup3]/[tup4] also
+   means there is no arity ceiling — a 40-column row is no harder than a 3-column
+   one. *)
+
+type row_t = Row : 'a Caqti_type.t * ('a -> Sqlml.Value.t list) -> row_t
+
+let text = Caqti_type.(option string)
+
+let rec row_type n =
+  if n <= 0 then Row (Caqti_type.unit, fun () -> [])
+  else
+    match row_type (n - 1) with
+    | Row (t, f) ->
+      Row
+        ( Caqti_type.t2 text t
+        , fun (x, rest) ->
+            (match x with None -> Sqlml.Value.Null | Some s -> Sqlml.Value.Text s) :: f rest )
+
+type arg_t = Arg : 'a Caqti_type.t * (string option list -> 'a) -> arg_t
+
+let rec arg_type n =
+  if n <= 0 then Arg (Caqti_type.unit, fun _ -> ())
+  else
+    match arg_type (n - 1) with
+    | Arg (t, f) ->
+      Arg
+        ( Caqti_type.t2 text t
+        , fun l -> match l with x :: tl -> (x, f tl) | [] -> (None, f []) )
+
+let hex_of_octets s =
+  let b = Buffer.create ((String.length s * 2) + 2) in
+  Buffer.add_string b "\\x";
+  String.iter (fun c -> Buffer.add_string b (Printf.sprintf "%02x" (Char.code c))) s;
+  Buffer.contents b
+
+let text_of_value : Sqlml.Value.t -> string option = function
+  | Sqlml.Value.Null -> None
+  | Sqlml.Value.Bool b -> Some (if b then "t" else "f")
+  | Sqlml.Value.Int n -> Some (string_of_int n)
+  | Sqlml.Value.Float f -> Some (Printf.sprintf "%.17g" f)
+  | Sqlml.Value.Text s -> Some s
+  | Sqlml.Value.Octets s -> Some (hex_of_octets s)
+
+(* ---------- the driver ---------- *)
+
+module Raw = struct
+  type conn = (module Caqti_eio.CONNECTION)
+
+  let name = "caqti-eio/postgresql"
+  let placeholder n = "$" ^ string_of_int n
+
+  let query (module Db : Caqti_eio.CONNECTION) ~sql ~params ~columns =
+    let (Arg (at, mk)) = arg_type (List.length params) in
+    let (Row (rt, get)) = row_type columns in
+    let req =
+      Caqti_request.create at rt Caqti_mult.zero_or_more (fun _ -> Caqti_query.of_string_exn sql)
+    in
+    match Db.collect_list req (mk (List.map text_of_value params)) with
+    | Ok rows -> Ok (List.map (fun r -> Array.of_list (get r)) rows)
+    | Error e -> Error (Caqti_error.show e)
+
+  (* Caqti's exec reports no affected-row count, so this returns 1 on success.
+     The libpq driver returns the real count via PQcmdTuples; if the count
+     matters to you, prefer that driver or run a RETURNING query. *)
+  let exec (module Db : Caqti_eio.CONNECTION) ~sql ~params =
+    let (Arg (at, mk)) = arg_type (List.length params) in
+    let req =
+      Caqti_request.create at Caqti_type.unit Caqti_mult.zero (fun _ ->
+          Caqti_query.of_string_exn sql)
+    in
+    match Db.exec req (mk (List.map text_of_value params)) with
+    | Ok () -> Ok 1
+    | Error e -> Error (Caqti_error.show e)
+end
+
+let of_connection (c : (module Caqti_eio.CONNECTION)) : Sqlml.conn =
+  Sqlml.Driver.make (module Raw) c
+
+let err e = Sqlml.Error.Connect (Caqti_error.show e)
+
+(* ---------- connecting ---------- *)
+
+let uri_of_env () =
+  Uri.of_string
+    (match Sys.getenv_opt "DATABASE_URL" with
+     | Some u when String.trim u <> "" -> u
+     | _ ->
+       let get k d = match Sys.getenv_opt k with Some v when v <> "" -> v | _ -> d in
+       Printf.sprintf "postgresql://%s@%s:%s/%s" (get "PGUSER" "postgres") (get "PGHOST" "127.0.0.1")
+         (get "PGPORT" "5432") (get "PGDATABASE" "postgres"))
+
+(* A single connection, for scripts and tests. A web app wants {!connect_pool}. *)
+let connect ~sw ~stdenv uri =
+  match Caqti_eio_unix.connect ~sw ~stdenv uri with
+  | Ok c -> Ok (of_connection c)
+  | Error e -> Error (err e)
+
+(* ---------- pooling ----------
+
+   [Pool.t] deliberately carries no query operations. The only way to reach a
+   [Sqlml.conn] is {!use} or {!transaction}, both of which scope it — which is
+   the enforcement the phantom-typed transaction handle could not give us. It
+   needs no type-level machinery, just not exposing the operation. *)
+
+module Pool = struct
+  type t = ((module Caqti_eio.CONNECTION), Caqti_error.connect) Caqti_eio.Pool.t
+
+  let create ~sw ~stdenv ?max_size uri =
+    let pool_config =
+      match max_size with
+      | None -> None
+      | Some n -> Some (Caqti_pool_config.create ~max_size:n ())
+    in
+    match Caqti_eio_unix.connect_pool ~sw ~stdenv ?pool_config uri with
+    | Ok p -> Ok p
+    | Error e -> Error (err e)
+
+  (* Borrow a connection for the duration of [f]. [f] returns a result, as every
+     generated query function does, and it is flattened rather than nested. *)
+  let use pool f =
+    match Caqti_eio.Pool.use (fun c -> Ok (f (of_connection c))) pool with
+    | Ok inner -> inner
+    | Error e -> Error (err e)
+
+  (* Borrow a connection and run [f] inside a transaction on it. Pinning to one
+     connection is exactly why this belongs on the pool rather than being
+     assembled by the caller. *)
+  let transaction pool f = use pool (fun conn -> Sqlml.transaction conn f)
+end

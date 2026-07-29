@@ -34,7 +34,10 @@ module Raw = struct
   let run conn sql params =
     Pq.exec_params conn sql (Array.of_list (List.map text_of_value params))
 
-  let query conn ~sql ~params =
+  (* libpq reports the column count back with the result, so [columns] is
+     redundant here. It exists for drivers that must declare the shape up
+     front. *)
+  let query conn ~sql ~params ~columns:_ =
     match Pq.check (run conn sql params) with
     | Error e -> Error e
     | Ok r ->

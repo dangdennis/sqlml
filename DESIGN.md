@@ -25,7 +25,8 @@ for the execution API.
 | `lib/pq` — raw libpq binding (shared) | **working** |
 | `lib/driver_pg` — Postgres driver over libpq | **working** |
 | `example/e2e.ml` — generated code against real Postgres | **16/16 passing** |
-| Caqti driver — for pooling and SQLite | deferred, see below |
+| `lib/driver_caqti` — Caqti/Eio driver with pooling | **working** |
+| `example/web.ml` — pooled, concurrent handlers | **working** |
 
 `example/db.mli` is the contract the generator must hit. It is hand-written and
 compiles; the generator's job is to produce it byte-for-byte from
@@ -257,24 +258,41 @@ compose with explicit polymorphic annotations, so any type variable that has to
 be universally quantified alongside a `{M : S}` binder is at the mercy of
 inference.
 
-## Why the driver is libpq, not Caqti
+## Two drivers
 
-Caqti was the intended substrate, and `Driver.S` still allows it. Two things
-pushed the first driver onto libpq instead:
+**libpq** (`lib/driver_pg`) — a single connection, no pooling. Fine for CLI
+tools, scripts and tests. Returns real affected-row counts via `PQcmdTuples`.
 
-- `Driver.S` is *dynamic* -- `Value.t list` in, `Value.t array list` out --
-  while Caqti's value is *static* codecs. Bridging them means existentially
-  packing a `Caqti_type.t` per query shape, for no benefit, since the generator
-  has already done the typing.
-- Caqti sends parameters with explicit type OIDs. Forcing them to text breaks
-  `WHERE uuid_col = $1` with `operator does not exist: uuid = text`. libpq's
-  `PQexecParams` with `paramTypes = NULL` lets the *server* infer, which is
-  what already works in the describe path.
+**Caqti over Eio** (`lib/driver_caqti`) — connection pooling and concurrency.
+This is what a web app uses.
 
-libpq is already a dependency (the generator needs `PQdescribePrepared`), so
-the driver added no new one. A Caqti driver remains worth adding for connection
-pooling and as the route to SQLite -- as a second implementation of `Driver.S`,
-changing nothing above it. That is what the boundary is for.
+An earlier revision of this document claimed Caqti could not work because it
+sends parameters with explicit type OIDs, so `WHERE uuid_col = $1` would fail
+with `operator does not exist: uuid = text`. **That was wrong.** Caqti's
+Postgres driver sends parameters with unspecified OIDs and lets the server
+infer, exactly as `PQexecParams` with `paramTypes = NULL` does. A `uuid`,
+`numeric` or enum parameter round-trips as text with no cast anywhere.
+
+The real obstacle was smaller: Caqti's codecs are static while sqlml's model is
+dynamic. Nesting `t2` existentially bridges them in about forty lines, and
+nesting rather than `tup3`/`tup4` means there is no arity ceiling. The one thing
+the driver needed from above was the column count, since Caqti must declare the
+row shape before executing where libpq discovers it from the result — hence
+`Query.ONE`/`MANY` exposing `columns`, which the generator knows anyway.
+
+**Eio is direct style, so no generated signature changed.** A query returns a
+plain `result`, not a promise. Choosing Lwt instead would have monadified every
+generated function.
+
+`Pool.t` deliberately carries no query operations: the only way to reach a
+`Sqlml.conn` is `Pool.use` or `Pool.transaction`, both scoped. That is the
+enforcement the phantom-typed transaction handle could not provide, achieved by
+not exposing the operation rather than by type-level machinery.
+
+The generator still uses libpq directly, and always will — `PQftable` /
+`PQftablecol` are the only source of nullability and shared-model detection, and
+Caqti cannot expose them. Codegen and runtime are different programs with
+different needs.
 
 ## Open decisions
 

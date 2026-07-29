@@ -245,6 +245,9 @@ let emit_implementation b r =
            (Typemap.decoder f.ftype) i)
        r.cols;
      bprintf b "    }\n");
+  (match r.row_type with
+   | Some _ -> bprintf b "\n  let columns = %d\n" (List.length r.cols)
+   | None -> ());
   bprintf b "\n  let cardinality = %s\n"
     (match r.d.Describe.query.Parse.cardinality with
      | Parse.One -> "Sqlml.Query.One"

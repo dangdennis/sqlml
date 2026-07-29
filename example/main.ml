@@ -39,7 +39,7 @@ module Stub = struct
      ; Sqlml.Value.Text "{}"; ts; ts; Sqlml.Value.Null
     |]
 
-  let query () ~sql ~params:_ =
+  let query () ~sql ~params:_ ~columns:_ =
     if contains sql "email_verified_at" then Ok [ wide ]
     else if contains sql "display_name, status\n" then
       Ok [ [| uu; Sqlml.Value.Text "dennis@example.com"; Sqlml.Value.Text "Dennis"; Sqlml.Value.Text "active" |] ]

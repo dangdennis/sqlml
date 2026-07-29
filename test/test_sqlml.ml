@@ -16,7 +16,7 @@ module Fake = struct
   let name = "fake"
   let placeholder n = "$" ^ string_of_int n
 
-  let query c ~sql ~params =
+  let query c ~sql ~params ~columns:_ =
     c.last <- (sql, params);
     Ok c.rows
 
@@ -48,6 +48,8 @@ module Get_user = struct
       display_name = Sqlml.Row.(option string) r 2
     }
 
+  let columns = 3
+
   let cardinality = Sqlml.Query.One
 end
 
@@ -60,6 +62,8 @@ module Search_users = struct
   let sql = "SELECT id, email FROM users WHERE email ILIKE $1 LIMIT $2"
   let encode { pattern; limit } = Sqlml.Value.[ of_string pattern; of_int limit ]
   let decode r = { id = Sqlml.Row.int r 0; email = Sqlml.Row.string r 1 }
+
+  let columns = 2
 
   let cardinality = Sqlml.Query.Many
 end

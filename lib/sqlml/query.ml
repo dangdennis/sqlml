@@ -34,6 +34,11 @@ module type ONE = sig
   type row
 
   val decode : Row.t -> row
+
+  (* Number of result columns. Known at codegen time, and required by drivers
+     that must declare the row shape before executing -- Caqti builds a static
+     row type, unlike libpq which reports the shape back with the result. *)
+  val columns : int
   val cardinality : one card
 end
 
@@ -44,6 +49,7 @@ module type MANY = sig
   type row
 
   val decode : Row.t -> row
+  val columns : int
   val cardinality : many card
 end
 

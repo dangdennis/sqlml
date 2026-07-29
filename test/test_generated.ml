@@ -22,7 +22,7 @@ module Stub = struct
   let name = "stub"
   let placeholder n = "$" ^ string_of_int n
 
-  let query c ~sql ~params =
+  let query c ~sql ~params ~columns:_ =
     c.last_params <- params;
     if contains sql "organization_id, email" then
       (* GetUserFull: all 7 columns of users *)
