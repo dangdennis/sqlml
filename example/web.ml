@@ -85,7 +85,7 @@ let () =
          match handle_show pool ~id with
          | Ok (Some u) ->
              Printf.printf "show     : %s -> %s\n" email
-               (Option.value u.display_name ~default:"?")
+               (Option.value u.name ~default:"?")
          | _ -> Printf.printf "show     : %s missing\n" email)
        people);
 

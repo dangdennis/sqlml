@@ -155,6 +155,43 @@ Note that `jsonb` is a normalised representation: PostgreSQL reorders object
 keys and drops duplicates, so a round-trip preserves the value, not the text.
 Use `json` if you need the text preserved exactly.
 
+## Configuration
+
+An optional `sqlml.toml` beside your queries directory controls the two things
+that cannot be inferred: what generated names are called, and which OCaml type
+a column maps to.
+
+```toml
+[rename]
+users = "user"                  # users_row becomes user_row
+"users.display_name" = "name"   # the field becomes `name`
+
+[types."users.id"]              # one column
+ocaml = "User_id.t"
+of_string = "User_id.of_string"
+to_string = "User_id.to_string"
+
+[types.citext]                  # or a whole Postgres type
+ocaml = "Email.t"
+of_string = "Email.of_string"
+to_string = "Email.to_string"
+```
+
+Table names are not singularized automatically. English pluralization is a
+swamp — `data`, `series`, `status`, `people` — so an explicit rename is longer
+and always right.
+
+Parameters are keyed on the query rather than the column, because PostgreSQL
+reports a parameter's type but not which column it is compared against, so
+`users.id` cannot reach the `$1` in `WHERE id = $1`:
+
+```toml
+[types."GetUser.id"]
+ocaml = "User_id.t"
+of_string = "User_id.of_string"
+to_string = "User_id.to_string"
+```
+
 ## Errors
 
 Failures carry a SQLSTATE, so a handler can act on them:

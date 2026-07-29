@@ -84,7 +84,8 @@ let build ~queries_dir ~conninfo =
   in
   Pq.finish conn;
   let* described = described in
-  let* mli, ml = Emit.generate ~src:queries_dir described in
+  let* config = Config.load queries_dir in
+  let* mli, ml = Emit.generate ~config ~src:queries_dir described in
   Ok { mli; ml; queries = List.length described; files = List.length files }
 
 (* Run generated source through ocamlformat, using whatever .ocamlformat applies

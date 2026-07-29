@@ -29,7 +29,7 @@ let describe conn ~id =
   | None -> Printf.sprintf "user %s: not found" (Uuidm.to_string id)
   | Some u ->
       Printf.sprintf "%s <%s> %s balance=%s joined=%s"
-        (Option.value u.display_name ~default:"(no name)")
+        (Option.value u.name ~default:"(no name)")
         u.email
         (match u.status with Active -> "active" | Banned -> "BANNED")
         (Decimal.to_string u.balance)

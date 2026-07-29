@@ -20,6 +20,7 @@ type column = {
   type_oid : int;
   type_name : string;
   elem_type_name : string option (* Some when the type is an array *);
+  table : string option; (* relname, when the column comes from a table *)
   table_oid : int; (* 0 when not a plain column reference *)
   table_col : int; (* attnum; 0 when table_oid is 0 *)
   nullable : bool;
@@ -273,6 +274,7 @@ let describe_all conn (queries : Parse.t list) =
                  type_oid = c.rtype;
                  type_name = type_name c.rtype;
                  elem_type_name = elem_name c.rtype;
+                 table = Option.map fst (List.assoc_opt c.rtable tinfo);
                  table_oid = c.rtable;
                  table_col = c.rcol;
                  nullable;

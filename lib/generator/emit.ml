@@ -13,24 +13,57 @@ type field = {
 
 (* ---------- resolution ---------- *)
 
-let resolve_column (q : Parse.t) (c : Describe.column) =
+let custom_of_config cfg ~key ~pg_type =
+  Config.custom cfg ~key ~pg_type
+  |> Option.map (fun (c : Config.custom) ->
+      {
+        Typemap.c_ocaml = c.Config.ocaml;
+        c_of_string = c.Config.of_string;
+        c_to_string = c.Config.to_string;
+      })
+
+(* A field can be renamed by table.column, so two queries selecting the same
+   column agree on what it is called. *)
+let field_name cfg ~table ~name =
+  match table with
+  | Some t -> Option.value (Config.renamed cfg (t ^ "." ^ name)) ~default:name
+  | None -> name
+
+let resolve_column cfg (q : Parse.t) (c : Describe.column) =
+  let table = c.Describe.table in
+  let custom =
+    custom_of_config cfg
+      ~key:(Option.map (fun t -> t ^ "." ^ c.Describe.name) table)
+      ~pg_type:c.Describe.type_name
+  in
   match
-    Typemap.of_pg ~type_name:c.Describe.type_name
+    Typemap.of_pg ?custom ~type_name:c.Describe.type_name
       ~elem_type_name:c.Describe.elem_type_name ~enum_labels:c.Describe.enum_labels
-      ~nullable:c.Describe.nullable
+      ~nullable:c.Describe.nullable ()
   with
-  | Some t -> Ok { fname = c.Describe.name; ftype = t; ord = c.Describe.table_col }
+  | Some t ->
+      Ok
+        {
+          fname = field_name cfg ~table ~name:c.Describe.name;
+          ftype = t;
+          ord = c.Describe.table_col;
+        }
   | None ->
       Error
         (Printf.sprintf
            "%s:%d: %s: column %S has Postgres type %S, which sqlml has no mapping for"
            q.Parse.file q.Parse.line q.Parse.name c.Describe.name c.Describe.type_name)
 
-let resolve_param (q : Parse.t) (p : Describe.param) =
+let resolve_param cfg (q : Parse.t) (p : Describe.param) =
+  let custom =
+    custom_of_config cfg
+      ~key:(Some (q.Parse.name ^ "." ^ p.Describe.pname))
+      ~pg_type:p.Describe.ptype_name
+  in
   match
-    Typemap.of_pg ~type_name:p.Describe.ptype_name
+    Typemap.of_pg ?custom ~type_name:p.Describe.ptype_name
       ~elem_type_name:p.Describe.pelem_type_name ~enum_labels:p.Describe.penum_labels
-      ~nullable:p.Describe.pnullable
+      ~nullable:p.Describe.pnullable ()
   with
   | Some t -> Ok { fname = p.Describe.pname; ftype = t; ord = 0 }
   | None ->
@@ -66,19 +99,21 @@ type resolved = {
   ps : field list;
 }
 
-let row_type_name (d : Describe.described) =
+let row_type_name cfg (d : Describe.described) =
   match d.Describe.model_table with
-  | Some t -> (Parse.to_snake t ^ "_row", From_table t)
+  | Some t ->
+      let base = Option.value (Config.renamed cfg t) ~default:t in
+      (Parse.to_snake base ^ "_row", From_table t)
   | None ->
       ( Parse.to_snake d.Describe.query.Parse.name ^ "_row",
         From_query d.Describe.query.Parse.name )
 
-let resolve (d : Describe.described) =
+let resolve cfg (d : Describe.described) =
   let q = d.Describe.query in
-  let* cols = map_result (resolve_column q) d.Describe.columns in
-  let* ps = map_result (resolve_param q) d.Describe.params in
+  let* cols = map_result (resolve_column cfg q) d.Describe.columns in
+  let* ps = map_result (resolve_param cfg q) d.Describe.params in
   let row_type =
-    match q.Parse.cardinality with Parse.Exec -> None | _ -> Some (row_type_name d)
+    match q.Parse.cardinality with Parse.Exec -> None | _ -> Some (row_type_name cfg d)
   in
   let row_origin = Option.map snd row_type in
   let row_type = Option.map fst row_type in
@@ -312,8 +347,8 @@ let header src =
     \   Regenerate with: sqlml generate *)\n\n"
     src
 
-let generate ~src (described : Describe.described list) =
-  let* resolved = map_result resolve described in
+let generate ?(config = Config.empty) ~src (described : Describe.described list) =
+  let* resolved = map_result (resolve config) described in
   let* rows = collect_rows resolved in
   let enums = collect_enums resolved in
   let mli = Buffer.create 4096 in

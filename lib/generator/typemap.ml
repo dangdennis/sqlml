@@ -1,6 +1,8 @@
 (** PostgreSQL type to OCaml type, plus the decoder and encoder expressions the emitter
     splices into generated code. *)
 
+type custom = { c_ocaml : string; c_of_string : string; c_to_string : string }
+
 type t =
   | Int
   | Float
@@ -12,6 +14,7 @@ type t =
   | Decimal
   | Json
   | Enum of string * string list (* ocaml type name, labels in sort order *)
+  | Custom of custom (* from sqlml.toml *)
   | Array of t
   | Option of t
 
@@ -26,6 +29,7 @@ let rec ocaml_type = function
   | Decimal -> "Decimal.t"
   | Json -> "Yojson.Safe.t"
   | Enum (n, _) -> n
+  | Custom c -> c.c_ocaml
   | Array t -> ocaml_type t ^ " list"
   | Option t -> ocaml_type t ^ " option"
 
@@ -41,6 +45,7 @@ let rec decoder = function
   | Decimal -> "Sqlml.Row.decimal"
   | Json -> "Sqlml.Row.json"
   | Enum (n, _) -> n ^ "_of_row"
+  | Custom c -> Printf.sprintf "(Sqlml.Row.custom %s)" c.c_of_string
   | Array t -> Printf.sprintf "(Sqlml.Row.list %s)" (elem_parser t)
   | Option t -> Printf.sprintf "(Sqlml.Row.option %s)" (decoder t)
 
@@ -56,6 +61,7 @@ and elem_parser = function
   | Decimal -> "Sqlml.Row.Elem.decimal"
   | Json -> "Sqlml.Row.Elem.json"
   | Enum (n, _) -> n ^ "_of_string"
+  | Custom c -> c.c_of_string
   | Array _ -> "(fun _ -> failwith \"nested arrays are not supported\")"
   | Option t -> elem_parser t
 
@@ -71,6 +77,7 @@ let rec encoder = function
   | Decimal -> "Sqlml.Value.of_decimal"
   | Json -> "Sqlml.Value.of_json"
   | Enum (n, _) -> n ^ "_to_value"
+  | Custom c -> Printf.sprintf "(fun x -> Sqlml.Value.of_string (%s x))" c.c_to_string
   | Array t -> Printf.sprintf "(Sqlml.Value.of_list %s)" (elem_printer t)
   | Option t -> Printf.sprintf "(Sqlml.Value.of_option %s)" (encoder t)
 
@@ -84,6 +91,7 @@ and elem_printer = function
   | Decimal -> "Sqlml.Value.Print.decimal"
   | Json -> "Sqlml.Value.Print.json"
   | Enum (n, _) -> n ^ "_to_string"
+  | Custom c -> c.c_to_string
   | Array _ -> "(fun _ -> failwith \"nested arrays are not supported\")"
   | Option t -> elem_printer t
 
@@ -112,13 +120,19 @@ let base_of_pg_name = function
 let scalar_of name labels =
   if labels <> [] then Some (Enum (name, labels)) else base_of_pg_name name
 
+(* A configured override replaces whatever the type would otherwise map to,
+   including enums -- if you say a column is an Email.t, it is one. *)
+let with_custom (c : custom option) fallback =
+  match c with Some c -> Some (Custom c) | None -> fallback
+
 (* For an array, [type_name] is Postgres's internal array name (_text) and
    [elem_type_name] is what we actually map; enum labels belong to the element. *)
-let of_pg ~type_name ~elem_type_name ~enum_labels ~nullable =
+let of_pg ?custom ~type_name ~elem_type_name ~enum_labels ~nullable () =
   let base =
     match elem_type_name with
-    | Some e -> Option.map (fun x -> Array x) (scalar_of e enum_labels)
-    | None -> scalar_of type_name enum_labels
+    | Some e ->
+        Option.map (fun x -> Array x) (with_custom custom (scalar_of e enum_labels))
+    | None -> with_custom custom (scalar_of type_name enum_labels)
   in
   Option.map (fun b -> if nullable then Option b else b) base
 

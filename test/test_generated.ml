@@ -81,7 +81,7 @@ let () =
   | None -> check "get_user decodes" false);
 
   (* the shared model type: one helper, two queries *)
-  let email_of (u : Db.users_row) = u.Db.email in
+  let email_of (u : Db.user_row) = u.Db.email in
   (match Db.get_user_full_exn conn ~id:uuid with
   | Some u ->
       check "shared model decodes" (email_of u = "dennis@example.com");

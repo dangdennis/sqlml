@@ -23,28 +23,28 @@ let user_status_of_row r i =
 type count_users_by_status_row = { status : user_status; n : int }
 
 type get_user_row = {
-  id : Uuidm.t;
+  id : User_id.t;
   email : string;
-  display_name : string option;
+  name : string option;
   status : user_status;
   balance : Decimal.t;
   created_at : Ptime.t;
 }
 
-type search_users_row = { id : Uuidm.t; email : string; created_at : Ptime.t }
+type search_users_row = { id : User_id.t; email : string; created_at : Ptime.t }
 type count_posts_by_user_row = { email : string; title : string option; post_count : int }
 
-type users_row = {
-  id : Uuidm.t;
+type user_row = {
+  id : User_id.t;
   organization_id : Uuidm.t;
   email : string;
-  display_name : string option;
+  name : string option;
   status : user_status;
   balance : Decimal.t;
   created_at : Ptime.t;
 }
 
-type get_users_by_ids_row = { id : Uuidm.t; email : string }
+type get_users_by_ids_row = { id : User_id.t; email : string }
 
 type get_tag_set_row = {
   tags : string list;
@@ -86,9 +86,9 @@ module Get_user = struct
 
   let decode r : get_user_row =
     {
-      id = Sqlml.Row.uuid r 0;
+      id = (Sqlml.Row.custom User_id.of_string) r 0;
       email = Sqlml.Row.string r 1;
-      display_name = (Sqlml.Row.option Sqlml.Row.string) r 2;
+      name = (Sqlml.Row.option Sqlml.Row.string) r 2;
       status = user_status_of_row r 3;
       balance = Sqlml.Row.decimal r 4;
       created_at = Sqlml.Row.ptime r 5;
@@ -124,7 +124,7 @@ module Search_users = struct
 
   let decode r : search_users_row =
     {
-      id = Sqlml.Row.uuid r 0;
+      id = (Sqlml.Row.custom User_id.of_string) r 0;
       email = Sqlml.Row.string r 1;
       created_at = Sqlml.Row.ptime r 2;
     }
@@ -186,8 +186,8 @@ let delete_user conn ~id = Sqlml.exec (module Delete_user) conn { Delete_user.id
 let delete_user_exn conn ~id = Sqlml.or_raise (delete_user conn ~id)
 
 module Get_user_full = struct
-  type params = { id : Uuidm.t }
-  type row = users_row
+  type params = { id : User_id.t }
+  type row = user_row
 
   let name = "GetUserFull"
 
@@ -196,14 +196,15 @@ module Get_user_full = struct
      FROM users\n\
      WHERE id = $1"
 
-  let encode (p : params) = [ Sqlml.Value.of_uuid p.id ]
+  let encode (p : params) =
+    [ (fun x -> Sqlml.Value.of_string (User_id.to_string x)) p.id ]
 
-  let decode r : users_row =
+  let decode r : user_row =
     {
-      id = Sqlml.Row.uuid r 0;
+      id = (Sqlml.Row.custom User_id.of_string) r 0;
       organization_id = Sqlml.Row.uuid r 1;
       email = Sqlml.Row.string r 2;
-      display_name = (Sqlml.Row.option Sqlml.Row.string) r 3;
+      name = (Sqlml.Row.option Sqlml.Row.string) r 3;
       status = user_status_of_row r 4;
       balance = Sqlml.Row.decimal r 5;
       created_at = Sqlml.Row.ptime r 6;
@@ -287,7 +288,7 @@ module Get_users_by_ids = struct
   let encode (p : params) = [ (Sqlml.Value.of_list Sqlml.Value.Print.uuid) p.ids ]
 
   let decode r : get_users_by_ids_row =
-    { id = Sqlml.Row.uuid r 0; email = Sqlml.Row.string r 1 }
+    { id = (Sqlml.Row.custom User_id.of_string) r 0; email = Sqlml.Row.string r 1 }
 
   let columns = 2
   let cardinality = Sqlml.Query.Many

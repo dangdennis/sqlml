@@ -42,6 +42,7 @@
   (dune (>= 3.16))
   (sqlml (= :version))
   (cmdliner (>= 1.3.0))
+  (otoml (>= 1.0.0))
   conf-postgresql))
 
 (package

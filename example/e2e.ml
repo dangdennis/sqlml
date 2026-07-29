@@ -51,7 +51,7 @@ let () =
       check "get_user finds the row" true;
       check "uuid round-trips" (Uuidm.equal u.Db.id id);
       check "text round-trips" (u.Db.email = "e2e@example.com");
-      check "nullable set -> Some" (u.Db.display_name = Some "End To End");
+      check "nullable set -> Some" (u.Db.name = Some "End To End");
       check "enum round-trips" (u.Db.status = Db.Active);
       check "numeric round-trips" (Decimal.to_string u.Db.balance = "42.50");
       check "timestamptz decodes" (Ptime.to_year u.Db.created_at >= 2025));
@@ -71,7 +71,7 @@ let () =
   (* omitting the optional argument must write a real NULL *)
   check "update" (Db.set_display_name_exn conn ~id () = 1);
   (match Db.get_user_exn conn ~id with
-  | Some u -> check "omitted optional -> NULL -> None" (u.Db.display_name = None)
+  | Some u -> check "omitted optional -> NULL -> None" (u.Db.name = None)
   | None -> check "omitted optional -> NULL -> None" false);
 
   (* LEFT JOIN: the ? override, against real data. This user has no posts, so

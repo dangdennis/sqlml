@@ -123,6 +123,15 @@ let decimal r i =
   | Value.Int n -> Decimal.of_int n
   | v -> bad i "numeric" v
 
+(* [Row.custom User_id.of_string r 0] for a column mapped to a user type via
+   sqlml.toml. A raising [of_string] becomes a decode error like any other. *)
+let custom parse r i =
+  match get r i with
+  | Value.Text s -> (
+      try parse s
+      with _ -> raise (Bad { column = i; expected = "custom type"; got = s }))
+  | v -> bad i "custom type" v
+
 (* ---------- arrays ----------
 
    Postgres hands arrays back as a "{a,b,c}" literal. Elements may be quoted,

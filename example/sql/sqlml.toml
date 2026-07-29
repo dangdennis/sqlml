@@ -1,0 +1,17 @@
+# Rename generated types and fields.
+[rename]
+users = "user"                  # users_row becomes user_row
+"users.display_name" = "name"   # the field becomes `name`
+
+# Map a column, or a whole Postgres type, to your own OCaml type.
+[types."users.id"]
+ocaml = "User_id.t"
+of_string = "User_id.of_string"
+to_string = "User_id.to_string"
+
+# Parameters are keyed on the query, since PostgreSQL does not say which
+# column a parameter is compared against.
+[types."GetUserFull.id"]
+ocaml = "User_id.t"
+of_string = "User_id.of_string"
+to_string = "User_id.to_string"

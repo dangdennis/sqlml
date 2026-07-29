@@ -9,28 +9,28 @@ val user_status_to_string : user_status -> string
 type count_users_by_status_row = { status : user_status; n : int }
 
 type get_user_row = {
-  id : Uuidm.t;
+  id : User_id.t;
   email : string;
-  display_name : string option;
+  name : string option;
   status : user_status;
   balance : Decimal.t;
   created_at : Ptime.t;
 }
 
-type search_users_row = { id : Uuidm.t; email : string; created_at : Ptime.t }
+type search_users_row = { id : User_id.t; email : string; created_at : Ptime.t }
 type count_posts_by_user_row = { email : string; title : string option; post_count : int }
 
-type users_row = {
-  id : Uuidm.t;
+type user_row = {
+  id : User_id.t;
   organization_id : Uuidm.t;
   email : string;
-  display_name : string option;
+  name : string option;
   status : user_status;
   balance : Decimal.t;
   created_at : Ptime.t;
 }
 
-type get_users_by_ids_row = { id : Uuidm.t; email : string }
+type get_users_by_ids_row = { id : User_id.t; email : string }
 
 type get_tag_set_row = {
   tags : string list;
@@ -121,15 +121,15 @@ val delete_user_exn : Sqlml.conn -> id:Uuidm.t -> int
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
 
 module Get_user_full : sig
-  type params = { id : Uuidm.t }
+  type params = { id : User_id.t }
 
-  include Sqlml.Query.ONE with type params := params and type row = users_row
+  include Sqlml.Query.ONE with type params := params and type row = user_row
 end
 
-val get_user_full : Sqlml.conn -> id:Uuidm.t -> (users_row option, Sqlml.Error.t) result
+val get_user_full : Sqlml.conn -> id:User_id.t -> (user_row option, Sqlml.Error.t) result
 (** Selects every column of users, so it should share the model type. *)
 
-val get_user_full_exn : Sqlml.conn -> id:Uuidm.t -> users_row option
+val get_user_full_exn : Sqlml.conn -> id:User_id.t -> user_row option
 (** Raising {!get_user_full}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
 

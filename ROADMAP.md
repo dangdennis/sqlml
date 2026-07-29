@@ -49,7 +49,7 @@ Shipped. `Sqlml.Sqlstate` covers all 262 codes across 43 classes, generated from
 `errcodes.txt` in the PostgreSQL source. libpq supplies every diagnostic field;
 Caqti supplies the code and message only, which is all it exposes.
 
-## 2. Naming, and overrides
+## 2. Naming, and overrides — done
 
 Generated names come from three places, and they share one namespace:
 
@@ -86,7 +86,7 @@ Deliberately not singularizing automatically. English pluralization is a swamp
 (`data`, `series`, `status`, `people`), and sqlc users hit it constantly. An
 explicit rename is longer and always right.
 
-## 3. Custom type mapping
+## 3. Custom type mapping — done
 
 The largest single lever on how the generated API feels. Today a `uuid` column
 is `Uuidm.t` and an email is `string`; there is no way to say a column is a
