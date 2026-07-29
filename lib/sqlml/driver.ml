@@ -9,6 +9,22 @@
    in a record or pass around), while the *query* is a modular explicit, so its
    params/row types can appear in the execution function's type. *)
 
+(* What a driver reports when a statement fails. [sqlstate] is absent for
+   client-side failures (a dropped socket, a malformed URI) where the server
+   never got far enough to classify anything. *)
+type error =
+  { message : string
+  ; sqlstate : Sqlstate.t option
+  ; detail : string option
+  ; hint : string option
+  ; constraint_name : string option
+  ; table_name : string option
+  ; column_name : string option
+  }
+
+let error ?sqlstate ?detail ?hint ?constraint_name ?table_name ?column_name message =
+  { message; sqlstate; detail; hint; constraint_name; table_name; column_name }
+
 module type S = sig
   type conn
 
@@ -25,9 +41,9 @@ module type S = sig
     sql:string ->
     params:Value.t list ->
     columns:int ->
-    (Value.t array list, string) result
+    (Value.t array list, error) result
 
-  val exec : conn -> sql:string -> params:Value.t list -> (int, string) result
+  val exec : conn -> sql:string -> params:Value.t list -> (int, error) result
 end
 
 type t = Conn : (module S with type conn = 'c) * 'c -> t

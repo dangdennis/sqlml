@@ -28,6 +28,7 @@ module Error = Error
 module Row = Row
 module Driver = Driver
 module Query = Query
+module Sqlstate = Sqlstate
 
 (* A connection handle.
 
@@ -72,7 +73,13 @@ let run_query (conn : conn) ~name ~sql ~params ~columns =
   | Driver.Conn ((module D), c) -> (
     match D.query c ~sql ~params ~columns with
     | Ok rows -> Ok rows
-    | Error message -> Error (Error.Execute { query = name; sql; message }))
+    | Error (d : Driver.error) ->
+      Error
+        (Error.Execute
+           { query = name; sql; message = d.Driver.message; sqlstate = d.Driver.sqlstate
+           ; detail = d.Driver.detail; hint = d.Driver.hint
+           ; constraint_name = d.Driver.constraint_name; table_name = d.Driver.table_name
+           ; column_name = d.Driver.column_name }))
 
 let fetch_all (module Q : Query.MANY) (conn : conn) (p : Q.params) : (Q.row list, Error.t) result =
   match run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns with
@@ -93,7 +100,13 @@ let exec (module Q : Query.EXEC) (conn : conn) (p : Q.params) : (int, Error.t) r
   | Driver.Conn ((module D), c) -> (
     match D.exec c ~sql:Q.sql ~params:(Q.encode p) with
     | Ok n -> Ok n
-    | Error message -> Error (Error.Execute { query = Q.name; sql = Q.sql; message }))
+    | Error (d : Driver.error) ->
+      Error
+        (Error.Execute
+           { query = Q.name; sql = Q.sql; message = d.Driver.message
+           ; sqlstate = d.Driver.sqlstate; detail = d.Driver.detail; hint = d.Driver.hint
+           ; constraint_name = d.Driver.constraint_name; table_name = d.Driver.table_name
+           ; column_name = d.Driver.column_name }))
 
 (* ---------- transactions ---------- *)
 
@@ -102,7 +115,13 @@ let statement (conn : conn) sql =
   | Driver.Conn ((module D), c) -> (
     match D.exec c ~sql ~params:[] with
     | Ok _ -> Ok ()
-    | Error message -> Error (Error.Execute { query = "transaction"; sql; message }))
+    | Error (d : Driver.error) ->
+      Error
+        (Error.Execute
+           { query = "transaction"; sql; message = d.Driver.message
+           ; sqlstate = d.Driver.sqlstate; detail = d.Driver.detail; hint = d.Driver.hint
+           ; constraint_name = d.Driver.constraint_name; table_name = d.Driver.table_name
+           ; column_name = d.Driver.column_name }))
 
 (* Commits when [f] returns [Ok], rolls back when it returns [Error] or raises.
    An exception is re-raised after the rollback, so [_exn] query functions work

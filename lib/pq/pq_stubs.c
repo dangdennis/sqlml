@@ -209,3 +209,15 @@ CAMLprim value sqlml_pq_cmd_tuples(value res)
   const char *s = PQcmdTuples(Res_val(res));
   CAMLreturn(Val_int((s == NULL || *s == '\0') ? 0 : atoi(s)));
 }
+
+/* PQresultErrorField, for the diagnostic fields that let a caller act on a
+ * failure rather than just print it. PG_DIAG_SQLSTATE ('C') is the important
+ * one; CONSTRAINT_NAME ('n') turns "something was taken" into "email was
+ * taken". Returns "" when the field is absent. */
+CAMLprim value sqlml_pq_result_error_field(value res, value field)
+{
+  CAMLparam2(res, field);
+  PGresult *r = Res_val(res);
+  const char *v = (r == NULL) ? NULL : PQresultErrorField(r, Int_val(field));
+  CAMLreturn(caml_copy_string(v == NULL ? "" : v));
+}

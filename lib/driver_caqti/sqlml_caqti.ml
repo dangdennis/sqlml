@@ -60,6 +60,28 @@ let text_of_value : Sqlml.Value.t -> string option = function
 
 (* ---------- the driver ---------- *)
 
+(* Caqti's own [cause] enumeration is deliberately incomplete, but the Postgres
+   driver carries the raw SQLSTATE in its [Result_error_msg], so failures are
+   still classified.
+
+   Note the asymmetry with the libpq driver: Result_error_msg carries only the
+   message and the SQLSTATE, so detail, hint, constraint name, table and column
+   are all None here. If you need to know *which* constraint was violated
+   rather than merely that one was, use sqlml-postgresql. *)
+let diag_of_caqti (e : [< Caqti_error.t ]) =
+  let fallback () = Sqlml.Driver.error (Caqti_error.show e) in
+  match e with
+  | `Request_failed qe | `Response_failed qe -> (
+    match qe.Caqti_error.msg with
+    | Caqti_driver_postgresql.Result_error_msg { error_message; sqlstate } ->
+      Sqlml.Driver.error error_message
+        ?sqlstate:
+          (match String.trim sqlstate with
+           | "" -> None
+           | s -> Some (Sqlml.Sqlstate.of_string s))
+    | _ -> fallback ())
+  | _ -> fallback ()
+
 module Raw = struct
   type conn = (module Caqti_eio.CONNECTION)
 
@@ -74,7 +96,7 @@ module Raw = struct
     in
     match Db.collect_list req (mk (List.map text_of_value params)) with
     | Ok rows -> Ok (List.map (fun r -> Array.of_list (get r)) rows)
-    | Error e -> Error (Caqti_error.show e)
+    | Error e -> Error (diag_of_caqti e)
 
   (* Caqti's exec reports no affected-row count, so this returns 1 on success.
      The libpq driver returns the real count via PQcmdTuples; if the count
@@ -87,7 +109,7 @@ module Raw = struct
     in
     match Db.exec req (mk (List.map text_of_value params)) with
     | Ok () -> Ok 1
-    | Error e -> Error (Caqti_error.show e)
+    | Error e -> Error (diag_of_caqti e)
 end
 
 let of_connection (c : (module Caqti_eio.CONNECTION)) : Sqlml.conn =

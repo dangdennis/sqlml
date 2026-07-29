@@ -89,9 +89,22 @@ let () =
   let dup = uuid "5f8c6cfe-6fe5-45f6-cc7f-445af7000a6b" in
   (match handle_signup pool ~id:dup ~email:"alice@example.com" ~display_name:"Impostor" with
    | Ok _ -> print_endline "duplicate: unexpectedly succeeded"
-   | Error _ ->
+   | Error e ->
+     (* This is what a handler actually needs: not "it failed", but which
+        constraint, so it can return 409 with a useful message instead of 500. *)
+     let status =
+       match Sqlml.Error.sqlstate e with
+       | Some s when Sqlml.Sqlstate.is_unique_violation s -> "409 Conflict"
+       | Some s when Sqlml.Sqlstate.is_retryable s -> "retry"
+       | Some _ | None -> "500"
+     in
      let still_works = unwrap "after-rollback" (handle_roster pool) in
-     Printf.printf "duplicate: rejected; pool still healthy (%d users)\n" (List.length still_works));
+     Printf.printf "duplicate: %s on %s (code %s); pool healthy (%d users)\n" status
+       (Option.value (Sqlml.Error.constraint_name e) ~default:"?")
+       (match Sqlml.Error.sqlstate e with
+        | Some s -> Sqlml.Sqlstate.to_string s
+        | None -> "none")
+       (List.length still_works));
 
   (* arrays through the Caqti driver, not just libpq *)
   let tag_id = uuid "9c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f" in

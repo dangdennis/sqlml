@@ -11,6 +11,7 @@ module Error = Error
 module Row = Row
 module Driver = Driver
 module Query = Query
+module Sqlstate = Sqlstate
 
 (** {1 Connections} *)
 

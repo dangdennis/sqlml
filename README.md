@@ -155,6 +155,27 @@ Note that `jsonb` is a normalised representation: PostgreSQL reorders object
 keys and drops duplicates, so a round-trip preserves the value, not the text.
 Use `json` if you need the text preserved exactly.
 
+## Errors
+
+Failures carry a SQLSTATE, so a handler can act on them:
+
+```ocaml
+match create_user conn ~id ~email () with
+| Ok _ -> respond `Created
+| Error e when Sqlml.Error.is_unique_violation e ->
+  respond (`Conflict (Option.value (Sqlml.Error.constraint_name e) ~default:"duplicate"))
+| Error e when Sqlml.Error.is_retryable e -> retry ()
+| Error e -> log (Sqlml.Error.to_string e); respond `Internal_error
+```
+
+`Sqlml.Sqlstate` covers all 262 PostgreSQL codes across 43 classes, with
+`condition` for matching, `name`, `class_`, and predicates including
+`is_retryable` (serialization failure, deadlock, or connection loss).
+
+The libpq driver also reports the constraint name, detail, hint, table and
+column. The Caqti driver reports only the message and code, which is all Caqti
+exposes.
+
 ## Transactions
 
 ```ocaml
@@ -212,6 +233,8 @@ type mappings.
 - One statement per named query; no dynamic query building beyond `= ANY(...)`.
 - Nested arrays are rejected. A NULL array element is a decode error, since
   PostgreSQL does not report whether elements are nullable.
+- The Caqti driver reports SQLSTATE but not the constraint name, detail or
+  hint; libpq reports all of them.
 - `int8` maps to `int`, which is 63-bit. Values beyond that are a decode error
   rather than a silent truncation.
 

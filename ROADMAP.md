@@ -3,7 +3,7 @@
 Ordered by what a real application needs first. Nothing here is committed to;
 it is a plan to argue with.
 
-## 1. SQLSTATE in errors
+## 1. SQLSTATE in errors — done
 
 Today `Error.Execute` carries a message string, so a caller cannot tell these
 apart:
@@ -45,9 +45,9 @@ val constraint_violated : t -> string option
 `constraint_name` is what turns "something was already taken" into "email was
 already taken" without parsing prose.
 
-Both drivers can supply it: libpq via `PQresultErrorField` with `PG_DIAG_SQLSTATE`
-and `PG_DIAG_CONSTRAINT_NAME`, Caqti via its own error record. Requires widening
-`Driver.S` to return a structured error rather than a string.
+Shipped. `Sqlml.Sqlstate` covers all 262 codes across 43 classes, generated from
+`errcodes.txt` in the PostgreSQL source. libpq supplies every diagnostic field;
+Caqti supplies the code and message only, which is all it exposes.
 
 ## 2. Naming, and overrides
 

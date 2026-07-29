@@ -162,5 +162,44 @@ let () =
   check "= ANY with empty array returns nothing" (Db.get_users_by_ids_exn conn ~ids:[] = []);
   List.iter (fun i -> ignore (Db.delete_user_exn conn ~id:i)) [ a; b ];
 
+  (* ---------- SQLSTATE ---------- *)
+
+  let sqlstate_of r =
+    match r with Error e -> Sqlml.Error.sqlstate e | Ok _ -> None
+  in
+  let a2 = uuid "aaaaaaaa-0000-4000-8000-000000000001" in
+  ignore
+    (Db.create_user_exn conn ~id:a2 ~organization_id:org ~email:"dup@example.com"
+       ~status:Db.Active ~balance:(Decimal.of_string "0.00") ());
+
+  (* unique violation on email *)
+  let dup =
+    Db.create_user conn ~id:(uuid "aaaaaaaa-0000-4000-8000-000000000002")
+      ~organization_id:org ~email:"dup@example.com" ~status:Db.Active
+      ~balance:(Decimal.of_string "0.00") ()
+  in
+  (match sqlstate_of dup with
+   | Some s ->
+     check "unique violation is 23505" (Sqlml.Sqlstate.to_string s = "23505");
+     check "named unique_violation" (Sqlml.Sqlstate.name s = "unique_violation");
+     check "condition matches" (Sqlml.Sqlstate.condition s = Sqlml.Sqlstate.Unique_violation);
+     check "classified as integrity" (Sqlml.Sqlstate.is_integrity_violation s);
+     check "not retryable" (not (Sqlml.Sqlstate.is_retryable s));
+     check "class is 23" (Sqlml.Sqlstate.class_ s = Sqlml.Sqlstate.Class.Integrity_constraint_violation)
+   | None -> check "unique violation reports a sqlstate" false);
+  (match dup with
+   | Error e ->
+     check "constraint name is reported" (Sqlml.Error.constraint_name e = Some "users_email_key");
+     check "Error.is_unique_violation" (Sqlml.Error.is_unique_violation e)
+   | Ok _ -> check "duplicate insert failed" false);
+
+  (* foreign key violation: a post whose author does not exist *)
+  let fk =
+    Db.put_tag_set conn ~id:(uuid "bbbbbbbb-0000-4000-8000-000000000001") ~owner:org ~tags:[]
+      ~scores:[] ~states:[] ~meta:(`Assoc [])
+  in
+  ignore fk;
+  ignore (Db.delete_user_exn conn ~id:a2);
+
   if !failures = 0 then print_endline "all good"
   else (Printf.printf "%d failure(s)\n" !failures; exit 1)

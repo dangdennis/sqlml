@@ -182,16 +182,18 @@ type raw_col =
   ; rcol : int
   }
 
+let msg (d : Pq.diag) = d.Pq.message
+
 let describe_one conn (q : Parse.t) ~stmt_name =
   let fail message = Error { file = q.Parse.file; line = q.Parse.line; qname = q.Parse.name; message } in
   let pr = Pq.prepare conn stmt_name q.Parse.sql in
   match Pq.check pr with
-  | Error e -> fail e
+  | Error e -> fail (msg e)
   | Ok pr ->
     Pq.clear pr;
     let dr = Pq.describe_prepared conn stmt_name in
     (match Pq.check dr with
-     | Error e -> fail e
+     | Error e -> fail (msg e)
      | Ok dr ->
        let params = List.init (Pq.nparams dr) (fun i -> Pq.paramtype dr i) in
        let cols =

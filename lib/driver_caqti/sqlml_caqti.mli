@@ -3,6 +3,11 @@
     This is the driver for a web application. Eio is direct style, so generated
     signatures are unchanged — a query returns a plain [result], not a promise.
 
+    Errors carry a SQLSTATE, so failures can be classified. They do not carry
+    the constraint name, detail or hint: Caqti's Postgres driver exposes only
+    the message and the code. Use [sqlml-postgresql] if you need to know which
+    constraint was violated.
+
     {[
       Eio_main.run @@ fun env ->
       Eio.Switch.run @@ fun sw ->

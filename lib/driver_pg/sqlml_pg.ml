@@ -37,9 +37,15 @@ module Raw = struct
   (* libpq reports the column count back with the result, so [columns] is
      redundant here. It exists for drivers that must declare the shape up
      front. *)
+  let of_diag (d : Pq.diag) =
+    Sqlml.Driver.error d.Pq.message
+      ?sqlstate:(Option.map Sqlml.Sqlstate.of_string d.Pq.sqlstate)
+      ?detail:d.Pq.detail ?hint:d.Pq.hint ?constraint_name:d.Pq.constraint_name
+      ?table_name:d.Pq.table_name ?column_name:d.Pq.column_name
+
   let query conn ~sql ~params ~columns:_ =
     match Pq.check (run conn sql params) with
-    | Error e -> Error e
+    | Error e -> Error (of_diag e)
     | Ok r ->
       Pq.with_result r (fun r ->
           let cols = Pq.nfields r in
@@ -51,7 +57,7 @@ module Raw = struct
 
   let exec conn ~sql ~params =
     match Pq.check (run conn sql params) with
-    | Error e -> Error e
+    | Error e -> Error (of_diag e)
     | Ok r -> Pq.with_result r (fun r -> Ok (Pq.cmd_tuples r))
 end
 
