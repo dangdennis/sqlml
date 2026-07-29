@@ -370,3 +370,13 @@ val is_retryable : t -> bool
 
 val is_syntax_or_access_error : t -> bool
 (** Class 42: a bug in the query or a missing object, not a runtime condition. *)
+
+val all : t list
+(** Every code in the table, in [errcodes.txt] order. 262 codes.
+
+    Codes outside the table still occur: extensions define their own, and PL/pgSQL
+    [RAISE ... USING ERRCODE] accepts arbitrary five-character codes. Those classify as
+    {!condition} [Other] while {!class_} still resolves from the first two characters.
+    Client-side failures — a dropped socket, a malformed URI — carry no SQLSTATE at all
+    and surface as [Error.Connect] or an [Execute] with [sqlstate = None]; the predicates
+    here return [false] for them. *)
