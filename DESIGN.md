@@ -10,27 +10,15 @@ for the execution API.
 
 ## Status
 
-| Piece | State |
-|---|---|
-| `lib/sqlml` — runtime, execution API, driver boundary | **working, tested** |
-| `test/` — 20 tests, incl. 14 over real generator output | **passing** |
-| `example/` — hand-written target output + call sites | **compiles and runs** |
-| `lib/generator/parse.ml` — .sql → named queries, `:id` → `$n` | **working** |
-| `lib/generator/pq.ml` + `pq_stubs.c` — libpq binding | **working** |
-| `lib/generator/describe.ml` — PG Describe + catalog resolution | **working** |
-| `lib/generator/typemap.ml` — Postgres type → OCaml type | **working** |
-| `lib/generator/emit.ml` — .ml + .mli emitter | **working** |
-| `bin/` — cmdliner CLI: `generate`, `check`, `describe` | **working** |
-| `example/generated/` — real generator output, compiled and tested | **passing** |
-| `lib/pq` — raw libpq binding (shared) | **working** |
-| `lib/driver_pg` — Postgres driver over libpq | **working** |
-| `example/e2e.ml` — generated code against real Postgres | **16/16 passing** |
-| `lib/driver_caqti` — Caqti/Eio driver with pooling | **working** |
-| `example/web.ml` — pooled, concurrent handlers | **working** |
+Working end to end on stock OCaml 5.5.0: runtime, generator, CLI
+(`generate`/`check`/`describe`), libpq driver, Caqti/Eio driver with pooling,
+transactions with isolation/savepoints/retry, streaming, SQLSTATE
+classification, `sqlml.toml` renames and custom types, ocamlformat-clean
+output. Roadmap items 1–5 shipped; see ROADMAP.md.
 
-`example/db.mli` is the contract the generator must hit. It is hand-written and
-compiles; the generator's job is to produce it byte-for-byte from
-`example/sql/users.sql` plus a live database.
+Tests: `dune test` (unit: runtime, generated output, sqlstate table) plus
+`example/e2e.exe` (libpq against PostgreSQL 18), `example/app.exe` and
+`example/web.exe` (pooled Caqti), and `sqlml check` as its own regression.
 
 ## Toolchain
 
@@ -70,9 +58,9 @@ Two gotchas, both hit on the way in:
 The execution API:
 
 ```ocaml
-val fetch_one : {Q : Query.ONE}  -> Driver.t -> Q.params -> (Q.row option, Error.t) result
-val fetch_all : {Q : Query.MANY} -> Driver.t -> Q.params -> (Q.row list,   Error.t) result
-val exec      : {Q : Query.EXEC} -> Driver.t -> Q.params -> (int,          Error.t) result
+val fetch_one : (module Q : Query.ONE)  -> conn -> Q.params -> (Q.row option, Error.t) result
+val fetch_all : (module Q : Query.MANY) -> conn -> Q.params -> (Q.row list,   Error.t) result
+val exec      : (module Q : Query.EXEC) -> conn -> Q.params -> (int,          Error.t) result
 ```
 
 The module argument determines both the parameter type you must supply and the
@@ -82,14 +70,14 @@ variable threaded through a `with type params = 'p and type row = 'r` witness
 that every caller reconstructs.
 
 **Explicits, not implicits.** The usual objection to explicits is call-site
-noise: you write `{Get_user}` every time. But in an sqlc-style tool a *program*
+noise: you write `(module Get_user)` every time. But in an sqlc-style tool a *program*
 writes those call sites. The verbosity is paid by the generator and the
 ergonomic cost to the user is zero — so the inference machinery of implicits
-buys nothing, at the cost of a more experimental compiler branch.
+buys nothing, at the cost of nothing.
 
 **Where explicits are *not* used:** the driver. A connection is an ordinary
 value you store in records and pass around, so it's an existential GADT over a
-first-class module (`Driver.t`), not a brace argument. Explicits are for the
+first-class module (`Driver.t`), not a module-dependent argument. Explicits are for the
 thing whose types must project into a signature; existentials are for the thing
 that must stay a plain value. Using explicits for both would force every call
 site to name its driver for no benefit.
@@ -100,7 +88,7 @@ site to name its driver for no benefit.
 .sql files
    ↓  generator: discover → parse (-- name: X :one) → PG Parse/Describe → typemap → emit
 generated query modules  (match Query.ONE / MANY / EXEC)
-   ↓  Sqlml.fetch_one {Q} / fetch_all {Q} / exec {Q}
+   ↓  Sqlml.fetch_one (module Q) / fetch_all (module Q) / exec (module Q)
 Driver.S  ←— the backend boundary; Caqti lives strictly below it
    ↓
 postgres / sqlite
@@ -140,7 +128,7 @@ history for the alternatives).
 **Shape C.** Row types at the top level, query modules also exported. One
 `open Db` per file puts every row's fields in scope, so `u.email` works and
 resolves by type-directed disambiguation even when several row types share a
-field name. Exporting the query module keeps `Sqlml.fetch_one {Db.Get_user}`
+field name. Exporting the query module keeps `Sqlml.fetch_one (module Db.Get_user)`
 available for tooling that wants to be generic over queries.
 
 **Labelled arguments** on the wrappers: `Db.get_user conn ~id`. Names come
@@ -210,51 +198,48 @@ a build:
  (action (run sqlml check -q sql -o . -m db)))
 ```
 
-## Transactions, and a limitation of modular explicits
+## Transactions, and the phantom tag that died twice
 
 ```ocaml
-val transaction : conn -> (conn -> ('a, Error.t) result) -> ('a, Error.t) result
+val transaction :
+  ?isolation:[ `Read_committed | `Repeatable_read | `Serializable ] ->
+  ?retry:int ->
+  conn -> (conn -> ('a, Error.t) result) -> ('a, Error.t) result
 ```
 
-Commits on `Ok`, rolls back on `Error` or on an exception (which is re-raised).
-The handle passed to the body has the same type as the outer one, so every
-generated query function works inside a transaction unchanged.
+Commits on `Ok`, rolls back on `Error` or an exception (re-raised). Nesting uses
+savepoints, driven by a depth counter on the handle. `~retry` re-runs the body
+on `40001`/`40P01` only, at the outermost level only.
 
-It was meant to be a *distinct* type — `tx conn`, phantom tagged, so that a
-nested transaction was a type error and an outer handle could not be used inside
-the body. **That is not expressible.** Two findings, in order of how much they
-constrain the design:
+The body handle was twice intended to be a distinct phantom-tagged `tx conn`,
+and abandoned twice for different reasons — both worth recording.
 
-1. **A binding whose type contains a modular-explicit arrow cannot carry an
-   explicit polymorphic annotation.** Both
+**First attempt, on the 5.3 fork: not expressible.** The tag would not
+generalise through the modular-explicit query functions, and the fork rejected
+explicit polymorphic annotations (`'k.` and `type k.`) on any binding whose type
+contains a modular-explicit arrow, with "the universal variable would escape its
+scope". No way to force it.
 
-   ```ocaml
-   let f : 'k. {Q : S} -> 'k conn -> ... = ...
-   let f : type k. {Q : S} -> k conn -> ... = ...
-   ```
+**On upstream 5.5.0 that limitation is gone.** Both annotation forms are
+accepted, inference generalises the tag, and the real runtime builds with
+`'k conn` throughout — verified, not assumed. Polymorphic accumulators
+(`fetch_fold`'s `'acc`) likewise infer cleanly. The fork-era claim that
+"modular explicits do not compose with explicit polymorphic annotations" is
+false upstream.
 
-   are rejected with *"the universal variable would escape its scope"*. So when
-   inference declines to generalise a type variable in such a function, there is
-   no way to force it.
+**Second attempt, on 5.5: expressible, and pointless.** The design had moved
+under it. Savepoint nesting made `transaction` legal on a handle already inside
+a transaction — so no operation demands a `toplevel conn` any more, which means
+the tag distinguishes nothing: it decorates every generated signature with a
+type parameter no function constrains. And the hazard it was meant to prevent
+became unreachable anyway: the body receives the *same* handle (same depth
+ref), so statements on the outer alias still join the transaction, and the one
+real remaining hazard — borrowing a second pooled connection mid-transaction —
+is a `Pool.use` inside `Pool.transaction`, which no per-handle tag can see.
 
-2. In this codebase the phantom tag did not generalise through `fetch_one` /
-   `fetch_all` / `exec`, and by (1) it could not be annotated into submission.
-   Minimal reproductions of the shape — phantom parameter, GADT connection,
-   modular-explicit binder, module-typed params, `try`/`with` — all generalise
-   fine, so the trigger is some narrower interaction that was not worth more
-   time to isolate.
-
-Nothing is unsafe today: with a single connection the outer handle *is* the same
-connection, so a statement issued through it is still inside the transaction.
-The exposure appears only once pooling exists, and the fix there needs no
-phantom types — make the pool a distinct type carrying no query operations, so
-that obtaining a connection at all requires going through `transaction` or
-`with_connection`.
-
-This is worth remembering as a general constraint: modular explicits do not
-compose with explicit polymorphic annotations, so any type variable that has to
-be universally quantified alongside a `{M : S}` binder is at the mercy of
-inference.
+The general lesson survives in weakened form: a type-level guarantee should be
+re-derived from the current design before being re-introduced. The property the
+tag encoded stopped being true of the system before the tag became expressible.
 
 ## Two drivers
 
