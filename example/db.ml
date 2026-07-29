@@ -51,6 +51,8 @@ module Get_user = struct
     ; balance = Sqlml.Row.decimal r 4
     ; created_at = Sqlml.Row.ptime r 5
     }
+
+  let cardinality = Sqlml.Query.One
 end
 
 let get_user conn ~id = Sqlml.fetch_one {Get_user} conn { Get_user.id }
@@ -91,6 +93,8 @@ module Search_users = struct
     ; email = Sqlml.Row.string r 1
     ; created_at = Sqlml.Row.ptime r 2
     }
+
+  let cardinality = Sqlml.Query.Many
 end
 
 let search_users conn ~organization_id ~email_pattern ~limit =
@@ -129,6 +133,8 @@ module Count_posts_by_user = struct
     ; title = Sqlml.Row.(option string) r 1
     ; post_count = Sqlml.Row.int r 2
     }
+
+  let cardinality = Sqlml.Query.Many
 end
 
 let count_posts_by_user conn = Sqlml.fetch_all {Count_posts_by_user} conn ()
@@ -142,6 +148,8 @@ module Delete_user = struct
   let name = "DeleteUser"
   let sql = "DELETE FROM users WHERE id = $1"
   let encode ({ id } : params) = [ Sqlml.Value.of_uuid id ]
+
+  let cardinality = Sqlml.Query.Exec
 end
 
 let delete_user conn ~id = Sqlml.exec {Delete_user} conn { Delete_user.id }

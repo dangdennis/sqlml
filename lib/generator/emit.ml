@@ -235,6 +235,11 @@ let emit_implementation b r =
            (Typemap.decoder f.ftype) i)
        r.cols;
      bprintf b "    }\n");
+  bprintf b "\n  let cardinality = %s\n"
+    (match r.d.Describe.query.Parse.cardinality with
+     | Parse.One -> "Sqlml.Query.One"
+     | Parse.Many -> "Sqlml.Query.Many"
+     | Parse.Exec -> "Sqlml.Query.Exec");
   bprintf b "end\n\n";
   let mandatory, optional = split_args r.ps in
   let all = mandatory @ optional in

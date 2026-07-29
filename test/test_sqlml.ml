@@ -47,6 +47,8 @@ module Get_user = struct
       email = Sqlml.Row.string r 1;
       display_name = Sqlml.Row.(option string) r 2
     }
+
+  let cardinality = Sqlml.Query.One
 end
 
 (* -- name: SearchUsers :many *)
@@ -58,6 +60,8 @@ module Search_users = struct
   let sql = "SELECT id, email FROM users WHERE email ILIKE $1 LIMIT $2"
   let encode { pattern; limit } = Sqlml.Value.[ of_string pattern; of_int limit ]
   let decode r = { id = Sqlml.Row.int r 0; email = Sqlml.Row.string r 1 }
+
+  let cardinality = Sqlml.Query.Many
 end
 
 (* -- name: DeleteUser :exec *)
@@ -67,6 +71,8 @@ module Delete_user = struct
   let name = "DeleteUser"
   let sql = "DELETE FROM users WHERE id = $1"
   let encode { id } = [ Sqlml.Value.of_int id ]
+
+  let cardinality = Sqlml.Query.Exec
 end
 
 (* ---------- the part that matters ---------- *)

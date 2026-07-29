@@ -73,6 +73,8 @@ module Get_user = struct
     ; balance = Sqlml.Row.decimal r 4
     ; created_at = Sqlml.Row.ptime r 5
     }
+
+  let cardinality = Sqlml.Query.One
 end
 
 let get_user conn ~id = Sqlml.fetch_one {Get_user} conn { Get_user.id }
@@ -100,6 +102,8 @@ module Search_users = struct
     ; email = Sqlml.Row.string r 1
     ; created_at = Sqlml.Row.ptime r 2
     }
+
+  let cardinality = Sqlml.Query.Many
 end
 
 let search_users conn ~organization_id ~email_pattern ~limit = Sqlml.fetch_all {Search_users} conn { Search_users.organization_id; email_pattern; limit }
@@ -119,6 +123,8 @@ module Count_posts_by_user = struct
     ; title = (Sqlml.Row.option Sqlml.Row.string) r 1
     ; post_count = Sqlml.Row.int r 2
     }
+
+  let cardinality = Sqlml.Query.Many
 end
 
 let count_posts_by_user conn = Sqlml.fetch_all {Count_posts_by_user} conn ()
@@ -135,6 +141,8 @@ module Delete_user = struct
   let encode (p : params) =
     [ Sqlml.Value.of_uuid p.id
     ]
+
+  let cardinality = Sqlml.Query.Exec
 end
 
 let delete_user conn ~id = Sqlml.exec {Delete_user} conn { Delete_user.id }
@@ -162,6 +170,8 @@ module Get_user_full = struct
     ; balance = Sqlml.Row.decimal r 5
     ; created_at = Sqlml.Row.ptime r 6
     }
+
+  let cardinality = Sqlml.Query.One
 end
 
 let get_user_full conn ~id = Sqlml.fetch_one {Get_user_full} conn { Get_user_full.id }
@@ -180,6 +190,8 @@ module Set_display_name = struct
     [ (Sqlml.Value.of_option Sqlml.Value.of_string) p.display_name
     ; Sqlml.Value.of_uuid p.id
     ]
+
+  let cardinality = Sqlml.Query.Exec
 end
 
 let set_display_name conn ~id ?display_name () = Sqlml.exec {Set_display_name} conn { Set_display_name.display_name; id }
@@ -206,6 +218,8 @@ module Create_user = struct
     ; user_status_to_value p.status
     ; Sqlml.Value.of_decimal p.balance
     ]
+
+  let cardinality = Sqlml.Query.Exec
 end
 
 let create_user conn ~id ~organization_id ~email ~status ~balance ?display_name () = Sqlml.exec {Create_user} conn { Create_user.id; organization_id; email; display_name; status; balance }

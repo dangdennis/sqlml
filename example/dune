@@ -1,4 +1,4 @@
 (executables
- (names main e2e)
- (modules main db wide e2e)
+ (names main e2e app)
+ (modules main db wide e2e app)
  (libraries sqlml sqlml_pg generated ptime uuidm decimal))

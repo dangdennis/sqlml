@@ -1,9 +1,23 @@
 (* What a generated query module looks like from the runtime's point of view.
 
-   One module per named query in a .sql file. The cardinality annotation
-   (:one / :many / :exec) selects which of these signatures the generated module
-   is checked against, which is what makes [fetch_one] vs [fetch_all] vs [exec]
-   a compile-time distinction rather than a runtime flag. *)
+   One module per named query in a .sql file. *)
+
+(* Cardinality witnesses.
+
+   Without these, ONE and MANY are structurally identical module types and EXEC
+   is a subset of both, so [fetch_all {Get_user}] and [exec {Get_user}] both
+   typecheck against a query declared :one -- the annotation in the .sql file
+   would be a comment rather than a constraint. Requiring a differently-typed
+   witness value in each signature is what makes the cardinality real. *)
+
+type one = One_tag
+type many = Many_tag
+type exec = Exec_tag
+
+type _ card =
+  | One : one card
+  | Many : many card
+  | Exec : exec card
 
 module type BASE = sig
   type params
@@ -20,6 +34,7 @@ module type ONE = sig
   type row
 
   val decode : Row.t -> row
+  val cardinality : one card
 end
 
 (* -- name: SearchUsers :many *)
@@ -29,7 +44,12 @@ module type MANY = sig
   type row
 
   val decode : Row.t -> row
+  val cardinality : many card
 end
 
 (* -- name: DeleteUser :exec *)
-module type EXEC = BASE
+module type EXEC = sig
+  include BASE
+
+  val cardinality : exec card
+end

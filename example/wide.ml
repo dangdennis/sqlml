@@ -116,6 +116,8 @@ module Get_user = struct
   let sql = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE id = $1"
   let encode ({ id } : params) = [ Sqlml.Value.of_uuid id ]
   let decode = decode_user_columns
+
+  let cardinality = Sqlml.Query.One
 end
 
 let get_user conn ~id = Sqlml.fetch_one {Get_user} conn { Get_user.id }
@@ -131,6 +133,8 @@ module Get_user_by_email = struct
   let sql = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE email = $1"
   let encode ({ email } : params) = [ Sqlml.Value.of_string email ]
   let decode = decode_user_columns
+
+  let cardinality = Sqlml.Query.One
 end
 
 let get_user_by_email conn ~email =
@@ -173,6 +177,8 @@ module List_user_summaries = struct
     ; display_name = Sqlml.Row.(option string) r 2
     ; status = user_status_of_row r 3
     }
+
+  let cardinality = Sqlml.Query.Many
 end
 
 let list_user_summaries conn ~organization_id ~limit =
@@ -222,6 +228,8 @@ module Create_user = struct
     ; of_bool p.marketing_opt_in
     ; of_string p.metadata
     ]
+
+  let cardinality = Sqlml.Query.Exec
 end
 
 let create_user conn ~organization_id ~email ~locale ~timezone ~status ~role
