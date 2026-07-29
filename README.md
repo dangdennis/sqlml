@@ -247,7 +247,9 @@ fail identically again. The body must be safe to re-run.
 
 ## Drivers
 
-`sqlml-postgresql` gives you a single connection over libpq:
+`sqlml-postgresql` gives you a single connection over libpq. Each distinct
+query is prepared once per connection and executed by name afterwards, so the
+server plans it once, not per call:
 
 ```ocaml
 let conn = Result.get_ok (Sqlml_pg.connect (Sqlml_pg.conninfo_of_env ()))

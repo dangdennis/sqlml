@@ -377,6 +377,34 @@ let () =
 
   List.iter (fun id -> ignore (Db.delete_user_exn conn ~id)) ids;
 
+  (* ---------- statement cache vs rollback ----------
+
+     The libpq driver prepares each SQL text on first use. If that first use
+     happens inside a transaction that rolls back, the server deallocates the
+     prepared statement while the cache still remembers it -- the next call gets
+     26000 invalid_sql_statement_name unless the driver re-prepares. Run a
+     never-before-used query inside a rolled-back transaction, then again
+     outside. *)
+  ignore
+    (Sqlml.transaction conn (fun tx ->
+         match Db.count_users_by_status tx with
+         | Ok _ -> Error (Sqlml.Error.Connect "deliberate rollback")
+         | Error e -> Error e));
+  (match Db.count_users_by_status conn with
+  | Ok _ -> check "prepared stmt survives rollback of its first use" true
+  | Error e ->
+      print_endline (Sqlml.Error.to_string e);
+      check "prepared stmt survives rollback of its first use" false);
+
+  (* and the plain repeated-use path: same statement, three executions *)
+  let ok3 =
+    List.for_all
+      (fun _ ->
+        match Db.count_users_by_status conn with Ok _ -> true | Error _ -> false)
+      [ 1; 2; 3 ]
+  in
+  check "repeated executions hit the cache" ok3;
+
   if !failures = 0 then print_endline "all good"
   else (
     Printf.printf "%d failure(s)\n" !failures;

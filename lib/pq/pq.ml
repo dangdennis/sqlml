@@ -18,6 +18,9 @@ external exec_params : conn -> string -> string option array -> res
 external cmd_tuples : res -> int = "sqlml_pq_cmd_tuples"
 external result_error_field : res -> int -> string = "sqlml_pq_result_error_field"
 
+external exec_prepared : conn -> string -> string option array -> res
+  = "sqlml_pq_exec_prepared"
+
 (* libpq's PG_DIAG_* selectors, which are just the ASCII codes. *)
 let diag_sqlstate = Char.code 'C'
 let diag_message_detail = Char.code 'D'

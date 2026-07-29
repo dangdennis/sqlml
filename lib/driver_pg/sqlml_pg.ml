@@ -25,14 +25,78 @@ let text_of_value : Sqlml.Value.t -> string option = function
   | Sqlml.Value.Text s -> Some s
   | Sqlml.Value.Octets s -> Some (hex_of_octets s)
 
+(* ---------- prepared-statement cache ----------
+
+   Each distinct SQL text is prepared once per connection and executed by name
+   afterwards, so the server parses and plans a query once instead of on every
+   call. Two realities shape the implementation:
+
+   - Not every statement can be prepared: PREPARE covers SELECT / INSERT /
+     UPDATE / DELETE / MERGE / VALUES, and nothing else -- BEGIN, SAVEPOINT,
+     DECLARE, FETCH all refuse. Rather than pattern-match SQL, a failed prepare
+     marks the text [Unpreparable] and it runs through PQexecParams forever.
+     Correctness is unaffected either way; this cache is performance only.
+
+   - A statement prepared inside a transaction dies with that transaction's
+     rollback, while the cache entry survives. The next execution then fails
+     with 26000 invalid_sql_statement_name -- so that code (and 0A000, "cached
+     plan must not change result type", after DDL) re-prepares and retries
+     once. *)
+
 module Raw = struct
-  type conn = Pq.conn
+  type prep = Prepared of string | Unpreparable
+  type conn = { raw : Pq.conn; stmts : (string, prep) Hashtbl.t; mutable counter : int }
 
   let name = "postgresql"
   let placeholder n = "$" ^ string_of_int n
 
+  (* peek at a result's failure state without consuming it *)
+  let stale_statement r =
+    (not (Pq.ok (Pq.result_status r)))
+    &&
+    match Pq.opt_field r Pq.diag_sqlstate with
+    | Some ("26000" | "0A000") -> true
+    | None | Some _ -> false
+
   let run conn sql params =
-    Pq.exec_params conn sql (Array.of_list (List.map text_of_value params))
+    let args = Array.of_list (List.map text_of_value params) in
+    let exec_direct () = Pq.exec_params conn.raw sql args in
+    let prepare_as stmt =
+      let r = Pq.prepare conn.raw stmt sql in
+      match Pq.check r with
+      | Ok r ->
+          Pq.clear r;
+          true
+      | Error _ -> false
+    in
+    match Hashtbl.find_opt conn.stmts sql with
+    | Some Unpreparable -> exec_direct ()
+    | Some (Prepared stmt) ->
+        let r = Pq.exec_prepared conn.raw stmt args in
+        (* Only the two cache-staleness codes are intercepted; any other
+           result, success or failure, passes through untouched so the caller
+           diagnoses the original error -- re-running inside an aborted
+           transaction would mask it with 25P02. *)
+        if stale_statement r then begin
+          Pq.clear r;
+          if prepare_as stmt then Pq.exec_prepared conn.raw stmt args
+          else begin
+            Hashtbl.replace conn.stmts sql Unpreparable;
+            exec_direct ()
+          end
+        end
+        else r
+    | None ->
+        conn.counter <- conn.counter + 1;
+        let stmt = Printf.sprintf "sqlml_s%d" conn.counter in
+        if prepare_as stmt then begin
+          Hashtbl.replace conn.stmts sql (Prepared stmt);
+          Pq.exec_prepared conn.raw stmt args
+        end
+        else begin
+          Hashtbl.replace conn.stmts sql Unpreparable;
+          exec_direct ()
+        end
 
   (* libpq reports the column count back with the result, so [columns] is
      redundant here. It exists for drivers that must declare the shape up
@@ -76,7 +140,7 @@ let conninfo_of_env () =
 
 let open_raw conninfo =
   let c = Pq.connect conninfo in
-  if Pq.connect_ok c then Ok c
+  if Pq.connect_ok c then Ok { Raw.raw = c; stmts = Hashtbl.create 16; counter = 0 }
   else
     let m = String.trim (Pq.error_message c) in
     Pq.finish c;
@@ -92,5 +156,5 @@ let with_connection conninfo f =
   | Error e -> Error e
   | Ok c ->
       Fun.protect
-        ~finally:(fun () -> Pq.finish c)
+        ~finally:(fun () -> Pq.finish c.Raw.raw)
         (fun () -> Ok (f (Sqlml.Driver.make (module Raw) c)))

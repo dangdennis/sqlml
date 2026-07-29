@@ -221,3 +221,21 @@ CAMLprim value sqlml_pq_result_error_field(value res, value field)
   const char *v = (r == NULL) ? NULL : PQresultErrorField(r, Int_val(field));
   CAMLreturn(caml_copy_string(v == NULL ? "" : v));
 }
+
+/* Execute a previously prepared statement. Same parameter convention as
+ * sqlml_pq_exec_params: text format, None becomes NULL. */
+CAMLprim value sqlml_pq_exec_prepared(value conn, value name, value params)
+{
+  CAMLparam3(conn, name, params);
+  int n = (int)Wosize_val(params);
+  const char **vals = NULL;
+  if (n > 0) vals = (const char **)caml_stat_alloc((size_t)n * sizeof(char *));
+  for (int i = 0; i < n; i++) {
+    value p = Field(params, i);
+    vals[i] = Is_block(p) ? String_val(Field(p, 0)) : NULL;
+  }
+  PGresult *r =
+      PQexecPrepared(Conn_val(conn), String_val(name), n, vals, NULL, NULL, 0);
+  if (vals) caml_stat_free((void *)vals);
+  CAMLreturn(caml_copy_nativeint((intnat)r));
+}

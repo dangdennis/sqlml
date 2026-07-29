@@ -44,7 +44,12 @@ module Pool : sig
     (t, Sqlml.Error.t) result
 
   val use : t -> (Sqlml.conn -> ('a, Sqlml.Error.t) result) -> ('a, Sqlml.Error.t) result
-  (** Borrow a connection for the duration of [f]. *)
+  (** Borrow a connection for the duration of [f].
+
+      {b Do not call this inside {!transaction}.} It borrows a {e second} connection, and
+      statements on it run outside the transaction — invisibly, since both handles have
+      the same type. Inside a transaction body, use the handle the body was given; it is
+      already the right connection. *)
 
   val transaction :
     ?isolation:[ `Read_committed | `Repeatable_read | `Serializable ] ->

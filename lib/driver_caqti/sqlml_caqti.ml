@@ -92,8 +92,12 @@ module Raw = struct
   let query (module Db : Caqti_eio.CONNECTION) ~sql ~params ~columns =
     let (Arg (at, mk)) = arg_type (List.length params) in
     let (Row (rt, get)) = row_type columns in
+    (* ~oneshot: a fresh request value is created per call, and a non-oneshot
+       request would register a new entry in Caqti's per-connection prepared
+       cache every time -- unbounded growth for no reuse. The libpq driver is
+       the one with a real statement cache. *)
     let req =
-      Caqti_request.create at rt Caqti_mult.zero_or_more (fun _ ->
+      Caqti_request.create ~oneshot:true at rt Caqti_mult.zero_or_more (fun _ ->
           Caqti_query.of_string_exn sql)
     in
     match Db.collect_list req (mk (List.map text_of_value params)) with
@@ -106,7 +110,7 @@ module Raw = struct
   let exec (module Db : Caqti_eio.CONNECTION) ~sql ~params =
     let (Arg (at, mk)) = arg_type (List.length params) in
     let req =
-      Caqti_request.create at Caqti_type.unit Caqti_mult.zero (fun _ ->
+      Caqti_request.create ~oneshot:true at Caqti_type.unit Caqti_mult.zero (fun _ ->
           Caqti_query.of_string_exn sql)
     in
     match Db.exec req (mk (List.map text_of_value params)) with
