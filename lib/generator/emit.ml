@@ -43,9 +43,20 @@ let rec map_result f = function
     let* rest = map_result f tl in
     Ok (y :: rest)
 
+(* Where a generated row type name came from, so a collision can say which two
+   things collided rather than blaming the wrong one. *)
+type origin =
+  | From_table of string (* shared model for a table *)
+  | From_query of string (* named after the query *)
+
+let describe_origin = function
+  | From_table t -> Printf.sprintf "the shared model for table %s" t
+  | From_query q -> Printf.sprintf "query %s" q
+
 type resolved =
   { d : Describe.described
   ; row_type : string option (* None for :exec *)
+  ; row_origin : origin option
   ; shared : bool
   ; cols : field list (* SELECT order -- decoders index by position *)
   ; type_fields : field list (* order the record type is declared in *)
@@ -54,8 +65,8 @@ type resolved =
 
 let row_type_name (d : Describe.described) =
   match d.Describe.model_table with
-  | Some t -> Parse.to_snake t ^ "_row"
-  | None -> Parse.to_snake d.Describe.query.Parse.name ^ "_row"
+  | Some t -> (Parse.to_snake t ^ "_row", From_table t)
+  | None -> (Parse.to_snake d.Describe.query.Parse.name ^ "_row", From_query d.Describe.query.Parse.name)
 
 let resolve (d : Describe.described) =
   let q = d.Describe.query in
@@ -64,6 +75,8 @@ let resolve (d : Describe.described) =
   let row_type =
     match q.Parse.cardinality with Parse.Exec -> None | _ -> Some (row_type_name d)
   in
+  let row_origin = Option.map snd row_type in
+  let row_type = Option.map fst row_type in
   let shared = d.Describe.model_table <> None in
   (* A shared model must not depend on the order columns happen to appear in one
      query's SELECT list: two queries selecting the same table's full row in
@@ -72,7 +85,7 @@ let resolve (d : Describe.described) =
   let type_fields =
     if shared then List.stable_sort (fun a b -> compare a.ord b.ord) cols else cols
   in
-  Ok { d; row_type; shared; cols; type_fields; ps }
+  Ok { d; row_type; row_origin; shared; cols; type_fields; ps }
 
 (* ---------- collecting shared pieces ---------- *)
 
@@ -107,21 +120,23 @@ let collect_rows resolved =
   let rec go = function
     | [] -> Ok (List.rev !order)
     | r :: tl -> (
-      match r.row_type with
-      | None -> go tl
-      | Some name -> (
+      match (r.row_type, r.row_origin) with
+      | None, _ | _, None -> go tl
+      | Some name, Some origin -> (
         match Hashtbl.find_opt seen name with
         | None ->
-          Hashtbl.replace seen name r.type_fields;
+          Hashtbl.replace seen name (r.type_fields, origin);
           order := (name, r.type_fields) :: !order;
           go tl
-        | Some prev when prev = r.type_fields -> go tl
-        | Some _ ->
+        (* same name, same fields: the shared model doing its job *)
+        | Some (prev, _) when prev = r.type_fields -> go tl
+        | Some (_, prev_origin) ->
           Error
             (Printf.sprintf
-               "%s: queries %S and an earlier one both map to row type %S but disagree on its \
-                fields"
-               r.d.Describe.query.Parse.file r.d.Describe.query.Parse.name name)))
+               "%s:%d: row type %S is claimed by both %s and %s, with different fields.\n\
+               \  Rename the query, or select the table's full row so they share the model."
+               r.d.Describe.query.Parse.file r.d.Describe.query.Parse.line name
+               (describe_origin prev_origin) (describe_origin origin))))
   in
   go resolved
 
