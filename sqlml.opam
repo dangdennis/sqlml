@@ -10,9 +10,9 @@ Write .sql files with sqlc-style annotations; sqlml asks PostgreSQL for the
 maintainer: ["Dennis Dang"]
 authors: ["Dennis Dang"]
 license: "MIT"
-homepage: "https://github.com/dangdennis/ocaml-sql"
-doc: "https://github.com/dangdennis/ocaml-sql"
-bug-reports: "https://github.com/dangdennis/ocaml-sql/issues"
+homepage: "https://github.com/dangdennis/sqlml"
+doc: "https://github.com/dangdennis/sqlml"
+bug-reports: "https://github.com/dangdennis/sqlml/issues"
 depends: [
   "ocaml" {>= "5.5.0"}
   "dune" {>= "3.16" & >= "3.16"}
@@ -36,4 +36,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/dangdennis/ocaml-sql.git"
+dev-repo: "git+https://github.com/dangdennis/sqlml.git"

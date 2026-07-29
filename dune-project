@@ -2,11 +2,11 @@
 (name sqlml)
 (generate_opam_files true)
 
-(source (github dangdennis/ocaml-sql))
+(source (github dangdennis/sqlml))
 (authors "Dennis Dang")
 (maintainers "Dennis Dang")
 (license MIT)
-(documentation "https://github.com/dangdennis/ocaml-sql")
+(documentation "https://github.com/dangdennis/sqlml")
 
 ; Three packages, so that depending on the runtime does not drag in libpq,
 ; Caqti and Eio. Generated code needs only `sqlml`.
