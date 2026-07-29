@@ -215,6 +215,11 @@ type mappings.
 - `int8` maps to `int`, which is 63-bit. Values beyond that are a decode error
   rather than a silent truncation.
 
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md). Next up is structured error codes, so callers can
+tell a unique violation from a deadlock.
+
 ## Prior art
 
 [sqlc](https://sqlc.dev) for the authoring model, [sqlgg](https://ygrek.org/p/sqlgg/)

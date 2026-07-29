@@ -1,0 +1,172 @@
+# Roadmap
+
+Ordered by what a real application needs first. Nothing here is committed to;
+it is a plan to argue with.
+
+## 1. SQLSTATE in errors
+
+Today `Error.Execute` carries a message string, so a caller cannot tell these
+apart:
+
+| SQLSTATE | Meaning | Right response |
+| --- | --- | --- |
+| `23505` | unique_violation | 409, do not retry |
+| `23503` | foreign_key_violation | 400 |
+| `23514` | check_violation | 400 |
+| `40001` | serialization_failure | retry the transaction |
+| `40P01` | deadlock_detected | retry the transaction |
+| `57014` | query_canceled | timeout |
+| `08006` | connection_failure | reconnect, retry |
+
+A web application has to make these distinctions, and matching on the message
+text is fragile and locale-dependent.
+
+Proposed:
+
+```ocaml
+type sqlstate = private string
+
+type t =
+  | Execute of
+      { query : string
+      ; sql : string
+      ; sqlstate : sqlstate option   (* None for client-side failures *)
+      ; message : string
+      ; detail : string option
+      ; constraint_name : string option
+      }
+  | ...
+
+val is_unique_violation : t -> bool
+val is_retryable : t -> bool          (* 40001, 40P01, and connection loss *)
+val constraint_violated : t -> string option
+```
+
+`constraint_name` is what turns "something was already taken" into "email was
+already taken" without parsing prose.
+
+Both drivers can supply it: libpq via `PQresultErrorField` with `PG_DIAG_SQLSTATE`
+and `PG_DIAG_CONSTRAINT_NAME`, Caqti via its own error record. Requires widening
+`Driver.S` to return a structured error rather than a string.
+
+## 2. Naming, and overrides
+
+Generated names come from three places, and they share one namespace:
+
+- shared model row types, from a table name — `users` becomes `users_row`
+- per-query row types, from the query name — `GetUser` becomes `get_user_row`
+- enums, from the Postgres type name — `user_status`
+
+A query named `Users` therefore collides with the model for table `users`. That
+is now detected and reported with both origins, but detection is not a fix.
+
+How the neighbours handle it:
+
+- **sqlc** singularizes table names (`authors` becomes `Author`), names query
+  results `<Query>Row`, and provides a `rename:` config. It has the same
+  collision class and documents the same limitation: one namespace, so a table
+  and a column cannot rename independently.
+- **Squirrel** generates one row type per query and no shared models at all.
+  No sharing, so no collisions — and no way to write a function that works
+  across two queries returning the same table.
+
+We chose sharing deliberately, so we inherit sqlc's problem and should take its
+escape hatch. Proposed, a `sqlml.toml` beside the queries directory:
+
+```toml
+[rename]
+users = "user"              # users_row -> user_row
+"users.display_name" = "name"
+
+[types]
+"users.email" = "Email.t"   # see 3
+```
+
+Deliberately not singularizing automatically. English pluralization is a swamp
+(`data`, `series`, `status`, `people`), and sqlc users hit it constantly. An
+explicit rename is longer and always right.
+
+## 3. Custom type mapping
+
+The largest single lever on how the generated API feels. Today a `uuid` column
+is `Uuidm.t` and an email is `string`; there is no way to say a column is a
+`User_id.t` or an `Email.t`.
+
+```toml
+[types]
+"users.id" = { ocaml = "User_id.t", of_string = "User_id.of_string", to_string = "User_id.to_string" }
+uuid       = { ocaml = "Id.t", of_string = "Id.of_string", to_string = "Id.to_string" }
+```
+
+Per-column overrides win over per-type. The generator splices the named
+functions into the decoder and encoder it already emits, so this needs no
+runtime support — `Typemap.t` grows a `Custom` case and the machinery is
+unchanged. sqlc's most requested feature.
+
+## 4. Transactions: isolation and savepoints
+
+`transaction` currently issues a bare `BEGIN`. Two gaps:
+
+- No isolation level. `transaction ~isolation:`Serializable` is required for
+  anything doing read-modify-write, and serializable is unusable without a
+  retry loop, which is unusable without (1).
+- Nested transactions are undefined. A `transaction` inside a `transaction`
+  issues a second `BEGIN`, which PostgreSQL warns about and ignores, so the
+  inner rollback silently does nothing. Savepoints fix this properly.
+
+```ocaml
+val transaction :
+  ?isolation:[ `Read_committed | `Repeatable_read | `Serializable ] ->
+  ?retry:int ->
+  conn -> (conn -> ('a, Error.t) result) -> ('a, Error.t) result
+```
+
+With `?retry`, a `40001` or `40P01` re-runs the body — the standard serializable
+pattern, and the reason (1) comes first.
+
+## 5. Streaming, and a stricter :one
+
+Two small, independent wins.
+
+`fetch_all` builds a list, which is the wrong shape for an export of a million
+rows. Caqti already streams; libpq needs a cursor or single-row mode.
+
+```ocaml
+val fetch_stream : (module Q : Query.MANY) -> conn -> Q.params -> (Q.row -> unit) -> (unit, Error.t) result
+```
+
+And a `:one!` cardinality returning the row directly, erroring when absent,
+since a good half of `:one` call sites immediately unwrap the option.
+
+## 6. Dynamic filters
+
+The common request the SQL-first model has no clean answer to: "filter by name
+if provided, and by status if provided."
+
+What exists today:
+
+```sql
+WHERE (:email IS NULL OR email = :email)
+```
+
+Correct, and plans badly — PostgreSQL cannot use an index on a predicate it
+cannot see through.
+
+Options, none obviously right:
+
+- **Typed fragments.** Generate a filter value per column; the query declares
+  where they splice. Composable, but it is a query builder in disguise and the
+  types get involved.
+- **Generated variants.** Emit one query per combination of optional filters.
+  Fast and exact; combinatorial past three filters.
+- **Leave it.** Say plainly that dynamic filtering is out of scope and point at
+  hand-written Caqti for those few queries.
+
+sqlc has not solved this either. Worth designing before building.
+
+## Not planned
+
+- SQLite. No Describe equivalent, so inference needs a wholly different
+  strategy, and its flexible typing makes the guarantee weaker anyway.
+- Migrations. A separate concern with good existing tools.
+- A query DSL. The premise of this project is that SQL is the source of truth.
