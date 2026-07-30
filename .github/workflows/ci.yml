@@ -30,6 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # This job tests the opam workflow. dune switches to package management
+      # whenever dune.lock is present, which would ignore the opam-installed
+      # dependencies and rebuild the world uncached -- so drop the lock here.
+      - name: Use the opam workflow, not the lockfile
+        run: rm -rf dune.lock
+
       # Modular explicits landed in 5.5.0; nothing older can build this.
       - uses: ocaml/setup-ocaml@v3
         with:
