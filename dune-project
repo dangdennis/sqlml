@@ -58,4 +58,7 @@
   (sqlml (= :version))
   (caqti (>= 3.0.0))
   (caqti-eio (>= 3.0.0))
-  (uri (>= 4.0.0))))
+  (uri (>= 4.0.0))
+  ; example programs and e2e only; not needed by the library
+  (caqti-driver-postgresql (and (>= 3.0.0) :with-test))
+  (eio_main :with-test)))

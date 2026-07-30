@@ -64,8 +64,8 @@ let () =
     | Sql_error e -> Some ("Sqlml.Sql_error: " ^ Error.to_string e)
     | _ -> None)
 
-(* One place builds Error.Execute from a driver diagnostic; four call sites
-   used to copy this record by hand. *)
+(* Every driver diagnostic becomes an Error.Execute here, so the mapping
+   between the two error shapes exists in exactly one place. *)
 let execute_error ~query ~sql (d : Driver.error) =
   Error.Execute
     {

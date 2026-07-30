@@ -26,15 +26,14 @@ let rec json_sorted : Yojson.Safe.t -> Yojson.Safe.t = function
 let id = uuid "1b4e28ba-2fa1-11d2-883f-0016d3cca427"
 let org = uuid "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 
-let () =
-  let conn =
-    match Sqlml_pg.connect (Sqlml_pg.conninfo_of_env ()) with
-    | Ok c -> c
-    | Error e ->
-        prerr_endline (Sqlml.Error.to_string e);
-        exit 1
-  in
+let conn =
+  match Sqlml_pg.connect (Sqlml_pg.conninfo_of_env ()) with
+  | Ok c -> c
+  | Error e ->
+      prerr_endline (Sqlml.Error.to_string e);
+      exit 1
 
+let test_crud conn =
   (* idempotent: this test owns these two ids *)
   ignore (Db.delete_user_exn conn ~id);
 
@@ -90,7 +89,9 @@ let () =
 
   check "delete" (Db.delete_user_exn conn ~id = 1);
   check "deleted row is gone" (Db.get_user_exn conn ~id = None);
+  ()
 
+let test_transactions conn =
   (* ---------- transactions ---------- *)
   let insert c ~email =
     Db.create_user_exn c ~id ~organization_id:org ~email ~status:Db.Active
@@ -135,7 +136,9 @@ let () =
         (u.Db.email = "in-tx@example.com")
   | _ -> check "generated query inside tx sees its own write" false);
   ignore (Db.delete_user_exn conn ~id);
+  ()
 
+let test_arrays conn =
   (* ---------- arrays ---------- *)
   let tag_id = uuid "7a1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d" in
   (* Elements that exercise every quoting rule Postgres has: a delimiter, a
@@ -182,7 +185,9 @@ let () =
   check "= ANY with empty array returns nothing"
     (Db.get_users_by_ids_exn conn ~ids:[] = []);
   List.iter (fun i -> ignore (Db.delete_user_exn conn ~id:i)) [ a; b ];
+  ()
 
+let test_sqlstate conn =
   (* ---------- SQLSTATE ---------- *)
   let sqlstate_of r = match r with Error e -> Sqlml.Error.sqlstate e | Ok _ -> None in
   let a2 = uuid "aaaaaaaa-0000-4000-8000-000000000001" in
@@ -223,7 +228,9 @@ let () =
   in
   ignore fk;
   ignore (Db.delete_user_exn conn ~id:a2);
+  ()
 
+let test_nesting_savepoints conn =
   (* ---------- nesting: savepoints ---------- *)
   let n1 = uuid "cccccccc-0000-4000-8000-000000000001" in
   let n2 = uuid "cccccccc-0000-4000-8000-000000000002" in
@@ -265,7 +272,9 @@ let () =
    with
   | exception Invalid_argument _ -> check "nested ~isolation raises Invalid_argument" true
   | _ -> check "nested ~isolation raises Invalid_argument" false);
+  ()
 
+let test_retry_a_real_serialization_failure conn =
   (* ---------- retry: a real serialization failure ---------- *)
 
   (* Two connections race on one row under REPEATABLE READ: conn2 updates the
@@ -311,7 +320,9 @@ let () =
       print_endline (Sqlml.Error.to_string e);
       check "serialization failure retried" false);
   ignore (Db.delete_user_exn conn ~id:victim);
+  ()
 
+let test_one conn =
   (* ---------- :one! ---------- *)
   let s1 = uuid "eeeeeeee-0000-4000-8000-000000000001" in
   ignore (Db.delete_user_exn conn ~id:s1);
@@ -326,7 +337,9 @@ let () =
   | Error (Sqlml.Error.Cardinality { expected = "exactly 1"; got = 0; _ }) ->
       check ":one! absence is a Cardinality error" true
   | _ -> check ":one! absence is a Cardinality error" false);
+  ()
 
+let test_streaming conn =
   (* ---------- streaming ---------- *)
   let ids =
     List.map
@@ -376,7 +389,9 @@ let () =
       check "streaming inside a transaction" false);
 
   List.iter (fun id -> ignore (Db.delete_user_exn conn ~id)) ids;
+  ()
 
+let test_statement_cache_vs_rollback conn =
   (* ---------- statement cache vs rollback ----------
 
      The libpq driver prepares each SQL text on first use. If that first use
@@ -404,7 +419,9 @@ let () =
       [ 1; 2; 3 ]
   in
   check "repeated executions hit the cache" ok3;
+  ()
 
+let test_optional_blocks conn =
   (* ---------- optional blocks ---------- *)
   let mk i email st bal =
     ignore (Db.delete_user_exn conn ~id:i);
@@ -440,7 +457,9 @@ let () =
   check "all three filters"
     (count ~email:"%@%" ~status:Db.Active ~min_balance:(Decimal.of_string "1") () = 2);
   List.iter (fun i -> ignore (Db.delete_user_exn conn ~id:i)) [ d1; d2; d3 ];
+  ()
 
+let test_date_time_interval conn =
   (* ---------- date / time / interval ---------- *)
   let bk = uuid "cdcdcdcd-0000-4000-8000-000000000001" in
   let at_time =
@@ -471,8 +490,28 @@ let () =
   | Error e ->
       print_endline (Sqlml.Error.to_string e);
       check "negative interval round-trip" false);
+  ()
 
+let () =
+  List.iter
+    (fun (name, f) ->
+      Printf.printf "-- %s\n" name;
+      f conn)
+    [
+      ("crud", test_crud);
+      ("transactions", test_transactions);
+      ("arrays", test_arrays);
+      ("sqlstate", test_sqlstate);
+      ("nesting_savepoints", test_nesting_savepoints);
+      ("retry_a_real_serialization_failure", test_retry_a_real_serialization_failure);
+      ("one", test_one);
+      ("streaming", test_streaming);
+      ("statement_cache_vs_rollback", test_statement_cache_vs_rollback);
+      ("optional_blocks", test_optional_blocks);
+      ("date_time_interval", test_date_time_interval);
+    ];
   if !failures = 0 then print_endline "all good"
-  else (
+  else begin
     Printf.printf "%d failure(s)\n" !failures;
-    exit 1)
+    exit 1
+  end
