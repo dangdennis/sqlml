@@ -38,7 +38,7 @@ let die fmt =
 let build_or_die ~queries_dir ~database =
   match Run.build ~queries_dir ~conninfo:(conninfo_of database) with
   | Ok b -> b
-  | Error m -> die "%s" m
+  | Error d -> die "%s" (Diag.to_string d)
 
 (* ---------- generate ---------- *)
 
@@ -100,15 +100,21 @@ let check_cmd =
 
 let describe queries_dir database =
   let conninfo = conninfo_of database in
-  let files = match Run.sql_files queries_dir with Ok f -> f | Error m -> die "%s" m in
-  let qs = match Run.parse_all files with Ok q -> q | Error m -> die "%s" m in
+  let files =
+    match Run.sql_files queries_dir with
+    | Ok f -> f
+    | Error d -> die "%s" (Diag.to_string d)
+  in
+  let qs =
+    match Run.parse_all files with Ok q -> q | Error d -> die "%s" (Diag.to_string d)
+  in
   let conn =
     match Describe.connect conninfo with
     | Ok c -> c
     | Error m -> die "could not connect: %s" m
   in
   (match Describe.describe_all conn qs with
-  | Error e -> die "%s" (Describe.string_of_error e)
+  | Error e -> die "%s" (Diag.to_string e)
   | Ok described ->
       List.iter
         (fun (d : Describe.described) ->

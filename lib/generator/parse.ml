@@ -49,9 +49,7 @@ type t = {
   line : int;
 }
 
-type error = { file : string; line : int; message : string }
-
-let err file line message = Error { file; line; message }
+let err file line fmt = Diag.error ~file ~line fmt
 
 (* ---------- identifiers ---------- *)
 
@@ -207,7 +205,7 @@ let rewrite_params ~file ~line sql =
     else copy_char ()
   done;
   match !bad with
-  | Some m -> err file line m
+  | Some m -> err file line "%s" m
   (* Named parameters are numbered from $1 by our own counter, so mixing them
      with explicit $n placeholders would silently collide -- :b in
      "WHERE a = $1 AND b = :b" would also become $1. Use one style. *)
@@ -258,7 +256,7 @@ let split_blocks ~file ~line raw =
     end
   done;
   match !bad with
-  | Some m -> err file line m
+  | Some m -> err file line "%s" m
   | None ->
       flush ();
       Ok (List.rev !segs)
@@ -294,10 +292,9 @@ let build_dynamic ~file ~line segs =
   in
   if nblocks > max_blocks then
     err file line
-      (Printf.sprintf
-         "%d optional blocks; at most %d are supported (%d variants each need a describe \
-          round-trip)"
-         nblocks max_blocks (1 lsl max_blocks))
+      "%d optional blocks; at most %d are supported (%d variants each need a describe \
+       round-trip)"
+      nblocks max_blocks (1 lsl max_blocks)
   else begin
     let nvariants = 1 lsl nblocks in
     let variants = Array.make nvariants ("", []) in
@@ -345,7 +342,7 @@ let build_dynamic ~file ~line segs =
                      p.pname))
           full;
         match !problem with
-        | Some m -> err file line m
+        | Some m -> err file line "%s" m
         | None ->
             Ok
               ( fst variants.(nvariants - 1),
@@ -393,7 +390,7 @@ let cardinality_of_string = function
 
 (* ---------- driver ---------- *)
 
-let ( let* ) = Result.bind
+open Gen_util
 
 let strip_trailing_semicolon s =
   let s = String.trim s in
@@ -426,9 +423,7 @@ let of_string ~file contents =
           match cardinality_of_string card with
           | Some c -> Ok c
           | None ->
-              err file line
-                (Printf.sprintf "unknown cardinality %S (expected :one, :many or :exec)"
-                   card)
+              err file line "unknown cardinality %S (expected :one, :many or :exec)" card
         in
         let body = List.rev !body in
         (* leading comment lines directly under the header are the docstring *)
@@ -442,8 +437,7 @@ let of_string ~file contents =
         let doc, sql_lines = split_doc [] body in
         let raw_sql = strip_trailing_semicolon (String.concat "\n" sql_lines) in
         let* () =
-          if raw_sql = "" then err file line (Printf.sprintf "query %S has no SQL" name)
-          else Ok ()
+          if raw_sql = "" then err file line "query %S has no SQL" name else Ok ()
         in
         let* segs = split_blocks ~file ~line raw_sql in
         let has_blocks = List.exists (function `Block _ -> true | _ -> false) segs in

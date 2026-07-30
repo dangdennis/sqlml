@@ -15,8 +15,8 @@ type drift =
    deterministic regardless of readdir order. Hidden directories and _build are
    skipped. *)
 let sql_files dir =
-  if not (Sys.file_exists dir) then Error (Printf.sprintf "no such directory: %s" dir)
-  else if not (Sys.is_directory dir) then Error (Printf.sprintf "not a directory: %s" dir)
+  if not (Sys.file_exists dir) then Diag.error "no such directory: %s" dir
+  else if not (Sys.is_directory dir) then Diag.error "not a directory: %s" dir
   else begin
     let acc = ref [] in
     let rec walk d =
@@ -35,21 +35,18 @@ let sql_files dir =
     in
     walk dir;
     let fs = List.sort compare !acc in
-    if fs = [] then Error (Printf.sprintf "no .sql files under %s" dir) else Ok fs
+    if fs = [] then Diag.error "no .sql files under %s" dir else Ok fs
   end
 
 let parse_all files =
   let rec go acc = function
     | [] -> Ok (List.concat (List.rev acc))
     | f :: tl -> (
-        match Parse.of_file f with
-        | Ok qs -> go (qs :: acc) tl
-        | Error (e : Parse.error) ->
-            Error (Printf.sprintf "%s:%d: %s" e.Parse.file e.Parse.line e.Parse.message))
+        match Parse.of_file f with Ok qs -> go (qs :: acc) tl | Error e -> Error e)
   in
   go [] files
 
-let ( let* ) = Result.bind
+open Gen_util
 
 (* All queries land in one module regardless of which file they came from, so a
    name used twice would emit two modules of the same name and produce output
@@ -62,12 +59,11 @@ let check_unique_names (queries : Parse.t list) =
     | (q : Parse.t) :: tl -> (
         match Hashtbl.find_opt seen q.Parse.name with
         | Some (f, l) ->
-            Error
-              (Printf.sprintf
-                 "%s:%d: duplicate query name %S, already defined at %s:%d\n\
-                 \  query names must be unique across every .sql file, because they all \
-                  generate into one module"
-                 q.Parse.file q.Parse.line q.Parse.name f l)
+            Diag.error ~file:q.Parse.file ~line:q.Parse.line
+              "duplicate query name %S, already defined at %s:%d\n\
+              \  query names must be unique across every .sql file, because they all \
+               generate into one module"
+              q.Parse.name f l
         | None ->
             Hashtbl.replace seen q.Parse.name (q.Parse.file, q.Parse.line);
             go tl)
@@ -78,10 +74,11 @@ let build ~queries_dir ~conninfo =
   let* files = sql_files queries_dir in
   let* queries = parse_all files in
   let* () = check_unique_names queries in
-  let* conn = Describe.connect conninfo in
-  let described =
-    Describe.describe_all conn queries |> Result.map_error Describe.string_of_error
+  let* conn =
+    Describe.connect conninfo
+    |> Result.map_error (fun m -> Diag.v ("could not connect: " ^ m))
   in
+  let described = Describe.describe_all conn queries in
   Pq.finish conn;
   let* described = described in
   let* config = Config.load queries_dir in

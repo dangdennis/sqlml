@@ -3,7 +3,7 @@
     One module per queries directory (not per .sql file), so shared model types work
     across files and callers need a single [open Db]. *)
 
-let ( let* ) = Result.bind
+open Gen_util
 
 type field = {
   fname : string;
@@ -49,10 +49,9 @@ let resolve_column cfg (q : Parse.t) (c : Describe.column) =
           ord = c.Describe.table_col;
         }
   | None ->
-      Error
-        (Printf.sprintf
-           "%s:%d: %s: column %S has Postgres type %S, which sqlml has no mapping for"
-           q.Parse.file q.Parse.line q.Parse.name c.Describe.name c.Describe.type_name)
+      Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
+        "column %S has Postgres type %S, which sqlml has no mapping for" c.Describe.name
+        c.Describe.type_name
 
 let block_param_names (q : Parse.t) =
   match q.Parse.dynamic with
@@ -77,17 +76,9 @@ let resolve_param cfg (q : Parse.t) (p : Describe.param) =
       let t = if in_block then Typemap.Option t else t in
       Ok { fname = p.Describe.pname; ftype = t; ord = 0 }
   | None ->
-      Error
-        (Printf.sprintf
-           "%s:%d: %s: parameter %S has Postgres type %S, which sqlml has no mapping for"
-           q.Parse.file q.Parse.line q.Parse.name p.Describe.pname p.Describe.ptype_name)
-
-let rec map_result f = function
-  | [] -> Ok []
-  | x :: tl ->
-      let* y = f x in
-      let* rest = map_result f tl in
-      Ok (y :: rest)
+      Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
+        "parameter %S has Postgres type %S, which sqlml has no mapping for"
+        p.Describe.pname p.Describe.ptype_name
 
 (* Where a generated row type name came from, so a collision can say which two
    things collided rather than blaming the wrong one. *)
@@ -181,14 +172,12 @@ let collect_rows resolved =
             (* same name, same fields: the shared model doing its job *)
             | Some (prev, _) when prev = r.type_fields -> go tl
             | Some (_, prev_origin) ->
-                Error
-                  (Printf.sprintf
-                     "%s:%d: row type %S is claimed by both %s and %s, with different \
-                      fields.\n\
-                     \  Rename the query, or select the table's full row so they share \
-                      the model."
-                     r.d.Describe.query.Parse.file r.d.Describe.query.Parse.line name
-                     (describe_origin prev_origin) (describe_origin origin))))
+                Diag.error ~file:r.d.Describe.query.Parse.file
+                  ~line:r.d.Describe.query.Parse.line
+                  "row type %S is claimed by both %s and %s, with different fields.\n\
+                  \  Rename the query, or select the table's full row so they share the \
+                   model."
+                  name (describe_origin prev_origin) (describe_origin origin)))
   in
   go resolved
 

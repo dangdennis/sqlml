@@ -32,7 +32,7 @@ type t = {
 
 let empty = { rename = []; customs = [] }
 let filename = "sqlml.toml"
-let err fmt = Printf.ksprintf (fun s -> Error s) fmt
+let err fmt = Diag.error fmt
 
 let rec fold_result f acc = function
   | [] -> Ok acc
@@ -77,9 +77,11 @@ let load dir =
   if not (Sys.file_exists path) then Ok empty
   else
     match Otoml.Parser.from_file_result path with
-    | Error m -> err "%s: %s" path m
+    | Error m -> Diag.error ~file:path "%s" m
     | Ok toml -> (
-        match of_toml toml with Ok c -> Ok c | Error m -> err "%s: %s" path m)
+        match of_toml toml with
+        | Ok c -> Ok c
+        | Error (e : Diag.t) -> Error { e with Diag.file = Some path })
 
 (* ---------- lookups ---------- *)
 

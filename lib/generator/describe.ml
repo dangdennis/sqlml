@@ -46,8 +46,6 @@ type described = {
   model_table : string option;
 }
 
-type error = { file : string; line : int; qname : string; message : string }
-
 let ( let* ) = Result.bind
 
 (* ---------- connection ---------- *)
@@ -199,7 +197,7 @@ let describe_text conn ~fail ~sql ~nparams ~stmt_name =
 
 let describe_one conn (q : Parse.t) ~stmt_name =
   let fail message =
-    Error { file = q.Parse.file; line = q.Parse.line; qname = q.Parse.name; message }
+    Error (Diag.v ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name message)
   in
   describe_text conn ~fail ~sql:q.Parse.sql ~nparams:(List.length q.Parse.params)
     ~stmt_name
@@ -214,7 +212,7 @@ let check_variants conn (q : Parse.t) ~stmt_base ~full_cols =
   | None -> Ok ()
   | Some d ->
       let fail message =
-        Error { file = q.Parse.file; line = q.Parse.line; qname = q.Parse.name; message }
+        Error (Diag.v ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name message)
       in
       let shape cols = List.map (fun c -> (c.rname, c.rtype, c.rtable, c.rcol)) cols in
       let expected = shape full_cols in
@@ -229,7 +227,11 @@ let check_variants conn (q : Parse.t) ~stmt_base ~full_cols =
               ~stmt_name:(Printf.sprintf "%s_v%d" stmt_base mask)
           with
           | Error e ->
-              Error { e with message = Printf.sprintf "variant %d: %s" mask e.message }
+              Error
+                {
+                  e with
+                  Diag.message = Printf.sprintf "variant %d: %s" mask e.Diag.message;
+                }
           | Ok (_, cols) ->
               if shape cols <> expected then
                 fail
@@ -264,9 +266,7 @@ let describe_all conn (queries : Parse.t list) =
       (List.concat_map (fun (_, _, cs) -> List.map (fun c -> (c.rtable, c.rcol)) cs) raws)
   in
   let all_tables = uniq (List.filter (fun t -> t <> 0) (List.map fst all_pairs)) in
-  let catalog f =
-    Result.map_error (fun m -> { file = ""; line = 0; qname = ""; message = m }) f
-  in
+  let catalog f = Result.map_error (fun m -> Diag.v m) f in
   let* tinfos = catalog (type_infos conn all_type_oids) in
   (* an array of an enum carries its labels on the element type *)
   let elem_oids =
@@ -357,7 +357,3 @@ let describe_all conn (queries : Parse.t list) =
          in
          { query = q; params; columns; model_table })
        raws)
-
-let string_of_error e =
-  if e.file = "" then e.message
-  else Printf.sprintf "%s:%d: %s: %s" e.file e.line e.qname e.message

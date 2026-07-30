@@ -14,7 +14,7 @@ let parse s =
   match Parse.of_string ~file:"t.sql" s with
   | Ok [ q ] -> q
   | Ok qs -> failwith (Printf.sprintf "expected 1 query, got %d" (List.length qs))
-  | Error (e : Parse.error) -> failwith e.Parse.message
+  | Error (e : Diag.t) -> failwith (Diag.to_string e)
 
 let fails s = match Parse.of_string ~file:"t.sql" s with Ok _ -> false | Error _ -> true
 let names (q : Parse.t) = List.map (fun (p : Parse.param) -> p.Parse.pname) q.Parse.params
