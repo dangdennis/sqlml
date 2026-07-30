@@ -15,10 +15,20 @@ done and deferred. Read the relevant section before changing a decision.
 ## Environment
 
 ```
-opam switch ocaml55            # stock OCaml 5.5.0; nothing older builds this
 docker compose up -d           # PostgreSQL 18 on 127.0.0.1:55432
 export DATABASE_URL=postgresql://sqlml:sqlml@127.0.0.1:55432/sqlml
 ```
+
+Dependencies are managed by dune package management: `dune.lock/` is
+committed, and a plain `dune build` fetches and builds everything including
+the compiler (OCaml 5.5.0 — nothing older builds this). The first build is
+slow; afterwards it is cached. `dune pkg lock` regenerates the lock after a
+dependency change in `dune-project`. An opam switch (`ocaml55`) works too and
+is what CI currently uses.
+
+The generator shells out to `ocamlformat`; make sure one matching
+`.ocamlformat`'s pinned version is on PATH or generated output will not match
+`sqlml check`.
 
 Schema is `example/schema.sql`, applied on first container boot. After editing
 it: `docker compose down -v && docker compose up -d`.

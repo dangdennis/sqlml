@@ -334,7 +334,7 @@ failing.
 
 ```
 docker compose up -d     # PostgreSQL 18 on 127.0.0.1:55432
-dune build
+dune build               # dune package management: fetches deps from dune.lock
 dune test                # unit tests, no database
 DATABASE_URL=postgresql://sqlml:sqlml@127.0.0.1:55432/sqlml dune exec example/e2e.exe
 ```
