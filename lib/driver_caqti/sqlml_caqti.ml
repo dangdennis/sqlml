@@ -121,6 +121,15 @@ end
 let of_connection (c : (module Caqti_eio.CONNECTION)) : Sqlml.conn =
   Sqlml.Driver.make (module Raw) c
 
+(* See the libpq driver: the decoders parse ISO output, so DateStyle is pinned
+   per session. Runs once per physical connection via post_connect. *)
+let session_setup (module Db : Caqti_eio.CONNECTION) =
+  let req =
+    Caqti_request.create ~oneshot:true Caqti_type.unit Caqti_type.unit Caqti_mult.zero
+      (fun _ -> Caqti_query.of_string_exn "SET datestyle TO ISO")
+  in
+  Db.exec req ()
+
 let err e = Sqlml.Error.Connect (Caqti_error.show e)
 
 (* ---------- connecting ---------- *)
@@ -137,8 +146,11 @@ let uri_of_env () =
 (* A single connection, for scripts and tests. A web app wants {!connect_pool}. *)
 let connect ~sw ~stdenv uri =
   match Caqti_eio_unix.connect ~sw ~stdenv uri with
-  | Ok c -> Ok (of_connection c)
   | Error e -> Error (err e)
+  | Ok c -> (
+      match session_setup c with
+      | Ok () -> Ok (of_connection c)
+      | Error e -> Error (err e))
 
 (* ---------- pooling ----------
 
@@ -148,7 +160,7 @@ let connect ~sw ~stdenv uri =
    needs no type-level machinery, just not exposing the operation. *)
 
 module Pool = struct
-  type t = ((module Caqti_eio.CONNECTION), Caqti_error.connect) Caqti_eio.Pool.t
+  type t = ((module Caqti_eio.CONNECTION), Caqti_error.t) Caqti_eio.Pool.t
 
   let create ~sw ~stdenv ?max_size uri =
     let pool_config =
@@ -156,7 +168,9 @@ module Pool = struct
       | None -> None
       | Some n -> Some (Caqti_pool_config.create ~max_size:n ())
     in
-    match Caqti_eio_unix.connect_pool ~sw ~stdenv ?pool_config uri with
+    match
+      Caqti_eio_unix.connect_pool ~sw ~stdenv ?pool_config ~post_connect:session_setup uri
+    with
     | Ok p -> Ok p
     | Error e -> Error (err e)
 

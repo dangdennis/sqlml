@@ -140,7 +140,19 @@ let conninfo_of_env () =
 
 let open_raw conninfo =
   let c = Pq.connect conninfo in
-  if Pq.connect_ok c then Ok { Raw.raw = c; stmts = Hashtbl.create 16; counter = 0 }
+  if Pq.connect_ok c then
+    (* The temporal decoders parse ISO output; a server or role configured with
+       a different DateStyle would otherwise poison every date and timestamp
+       read. TimeZone is deliberately left alone -- timestamptz output carries
+       its offset, so any zone round-trips correctly. *)
+    begin match Pq.check (Pq.exec c "SET datestyle TO ISO") with
+    | Ok r ->
+        Pq.clear r;
+        Ok { Raw.raw = c; stmts = Hashtbl.create 16; counter = 0 }
+    | Error d ->
+        Pq.finish c;
+        Error (Sqlml.Error.Connect ("SET datestyle: " ^ d.Pq.message))
+    end
   else
     let m = String.trim (Pq.error_message c) in
     Pq.finish c;

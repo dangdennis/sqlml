@@ -155,6 +155,13 @@ SELECT id, email FROM users WHERE id = ANY(:ids);
 val get_users_by_ids : Sqlml.conn -> ids:Uuidm.t list -> (get_users_by_ids_row list, _) result
 ```
 
+`timestamptz` decodes to the instant it names: output carries the session's
+offset, which the parser honours, so any server `TimeZone` round-trips
+correctly. `timestamp` (without time zone) has no zone to honour; it is read
+and written as UTC wall-clock time by convention — prefer `timestamptz`. Both
+drivers pin `datestyle = ISO` per connection, so a server configured with
+`German` or `SQL` output styles cannot poison temporal decoding.
+
 `Sqlml.Interval.t` is `{ months; days; micros }` — three independent fields,
 because a month has no fixed length and a day is not always 24 hours. Parsing
 accepts all four PostgreSQL `IntervalStyle` output formats.
