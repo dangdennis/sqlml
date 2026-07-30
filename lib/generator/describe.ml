@@ -52,16 +52,7 @@ let ( let* ) = Result.bind
 
 (* ---------- connection ---------- *)
 
-let conninfo_of_env () =
-  match Sys.getenv_opt "DATABASE_URL" with
-  | Some u when String.trim u <> "" -> u
-  | _ ->
-      let get k d = match Sys.getenv_opt k with Some v when v <> "" -> v | _ -> d in
-      Printf.sprintf "host=%s port=%s user=%s dbname=%s%s" (get "PGHOST" "127.0.0.1")
-        (get "PGPORT" "5432") (get "PGUSER" "postgres") (get "PGDATABASE" "postgres")
-        (match Sys.getenv_opt "PGPASSWORD" with
-        | Some p when p <> "" -> " password=" ^ p
-        | _ -> "")
+let conninfo_of_env = Pq.conninfo_of_env
 
 let connect conninfo =
   let c = Pq.connect conninfo in
@@ -232,28 +223,7 @@ let check_variants conn (q : Parse.t) ~stmt_base ~full_cols =
         if mask >= n - 1 then Ok () (* the full variant is the canonical describe *)
         else
           let sql = d.Parse.variant_sqls.(mask) in
-          let nparams =
-            (* count $k placeholders by their maximum index *)
-            let m = ref 0 in
-            String.iteri
-              (fun i c ->
-                if c = '$' && i + 1 < String.length sql then
-                  match int_of_string_opt (String.make 1 sql.[i + 1]) with
-                  | Some d0 ->
-                      let j = ref (i + 1) in
-                      let v = ref 0 in
-                      while
-                        !j < String.length sql && sql.[!j] >= '0' && sql.[!j] <= '9'
-                      do
-                        v := (10 * !v) + Char.code sql.[!j] - Char.code '0';
-                        incr j
-                      done;
-                      ignore d0;
-                      if !v > !m then m := !v
-                  | None -> ())
-              sql;
-            !m
-          in
+          let nparams = d.Parse.variant_nparams.(mask) in
           match
             describe_text conn ~fail ~sql ~nparams
               ~stmt_name:(Printf.sprintf "%s_v%d" stmt_base mask)

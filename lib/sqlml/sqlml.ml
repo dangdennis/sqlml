@@ -64,6 +64,22 @@ let () =
     | Sql_error e -> Some ("Sqlml.Sql_error: " ^ Error.to_string e)
     | _ -> None)
 
+(* One place builds Error.Execute from a driver diagnostic; four call sites
+   used to copy this record by hand. *)
+let execute_error ~query ~sql (d : Driver.error) =
+  Error.Execute
+    {
+      query;
+      sql;
+      message = d.Driver.message;
+      sqlstate = d.Driver.sqlstate;
+      detail = d.Driver.detail;
+      hint = d.Driver.hint;
+      constraint_name = d.Driver.constraint_name;
+      table_name = d.Driver.table_name;
+      column_name = d.Driver.column_name;
+    }
+
 let decode_fail name (e : exn) =
   match e with
   | Row.Bad { column; expected; got } ->
@@ -75,20 +91,7 @@ let run_query (conn : conn) ~name ~sql ~params ~columns =
   | Driver.Conn ((module D), c, _) -> (
       match D.query c ~sql ~params ~columns with
       | Ok rows -> Ok rows
-      | Error (d : Driver.error) ->
-          Error
-            (Error.Execute
-               {
-                 query = name;
-                 sql;
-                 message = d.Driver.message;
-                 sqlstate = d.Driver.sqlstate;
-                 detail = d.Driver.detail;
-                 hint = d.Driver.hint;
-                 constraint_name = d.Driver.constraint_name;
-                 table_name = d.Driver.table_name;
-                 column_name = d.Driver.column_name;
-               }))
+      | Error (d : Driver.error) -> Error (execute_error ~query:name ~sql d))
 
 let fetch_all (module Q : Query.MANY) (conn : conn) (p : Q.params) :
     (Q.row list, Error.t) result =
@@ -116,20 +119,7 @@ let exec (module Q : Query.EXEC) (conn : conn) (p : Q.params) : (int, Error.t) r
   | Driver.Conn ((module D), c, _) -> (
       match D.exec c ~sql:(Q.sql p) ~params:(Q.encode p) with
       | Ok n -> Ok n
-      | Error (d : Driver.error) ->
-          Error
-            (Error.Execute
-               {
-                 query = Q.name;
-                 sql = Q.sql p;
-                 message = d.Driver.message;
-                 sqlstate = d.Driver.sqlstate;
-                 detail = d.Driver.detail;
-                 hint = d.Driver.hint;
-                 constraint_name = d.Driver.constraint_name;
-                 table_name = d.Driver.table_name;
-                 column_name = d.Driver.column_name;
-               }))
+      | Error (d : Driver.error) -> Error (execute_error ~query:Q.name ~sql:(Q.sql p) d))
 
 let fetch_one_strict (module Q : Query.ONE_STRICT) (conn : conn) (p : Q.params) :
     (Q.row, Error.t) result =
@@ -151,20 +141,7 @@ let statement (conn : conn) sql =
   | Driver.Conn ((module D), c, _) -> (
       match D.exec c ~sql ~params:[] with
       | Ok _ -> Ok ()
-      | Error (d : Driver.error) ->
-          Error
-            (Error.Execute
-               {
-                 query = "transaction";
-                 sql;
-                 message = d.Driver.message;
-                 sqlstate = d.Driver.sqlstate;
-                 detail = d.Driver.detail;
-                 hint = d.Driver.hint;
-                 constraint_name = d.Driver.constraint_name;
-                 table_name = d.Driver.table_name;
-                 column_name = d.Driver.column_name;
-               }))
+      | Error (d : Driver.error) -> Error (execute_error ~query:"transaction" ~sql d))
 
 (* Commits when [f] returns [Ok], rolls back when it returns [Error] or raises.
 
@@ -273,20 +250,8 @@ let fetch_fold (module Q : Query.MANY) ?(batch = 500) (conn : conn) (p : Q.param
             ~params:(Q.encode p)
         with
         | Ok _ -> Ok ()
-        | Error (d : Driver.error) ->
-            Error
-              (Error.Execute
-                 {
-                   query = Q.name;
-                   sql = Q.sql p;
-                   message = d.Driver.message;
-                   sqlstate = d.Driver.sqlstate;
-                   detail = d.Driver.detail;
-                   hint = d.Driver.hint;
-                   constraint_name = d.Driver.constraint_name;
-                   table_name = d.Driver.table_name;
-                   column_name = d.Driver.column_name;
-                 }))
+        | Error (d : Driver.error) -> Error (execute_error ~query:Q.name ~sql:(Q.sql p) d)
+        )
   in
   let fetch_sql = Printf.sprintf "FETCH FORWARD %d FROM %s" batch cur in
   let rec loop acc =

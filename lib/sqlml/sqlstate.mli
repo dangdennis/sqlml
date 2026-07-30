@@ -1,9 +1,9 @@
 (** PostgreSQL SQLSTATE codes.
 
-    Generated from [src/backend/utils/errcodes.txt] in the PostgreSQL source; 262 codes
-    across 43 classes. The point is to let a caller act on a failure rather than print it:
-    retry a serialization failure, return 409 on a unique violation, 400 on a check
-    violation.
+    Generated from [src/backend/utils/errcodes.txt] in the PostgreSQL source by
+    [tools/gen_sqlstate.py]; 262 codes across 43 classes. The point is to let a caller act
+    on a failure rather than print it: retry a serialization failure, return 409 on a
+    unique violation, 400 on a check violation.
 
     {[
     match Sqlml.Error.sqlstate e with

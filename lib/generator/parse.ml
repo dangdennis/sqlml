@@ -33,6 +33,7 @@ type param = { pname : string; index : int; nullable : bool }
 type dyn = {
   nblocks : int;
   variant_sqls : string array;
+  variant_nparams : int array;
   block_params : string list array;
 }
 
@@ -97,6 +98,7 @@ let rewrite_params ~file ~line sql =
   let order = ref [] in
   let next_index = ref 0 in
   let bad = ref None in
+  let saw_positional = ref false in
   let i = ref 0 in
   let copy_char () =
     Buffer.add_char buf sql.[!i];
@@ -145,9 +147,11 @@ let rewrite_params ~file ~line sql =
       done;
       if not !fin then bad := Some "unterminated /* comment"
     end
-    else if c = '$' && !i + 1 < n && is_digit sql.[!i + 1] then
+    else if c = '$' && !i + 1 < n && is_digit sql.[!i + 1] then begin
       (* an explicit positional placeholder the user wrote; leave it alone *)
+      saw_positional := true;
       copy_char ()
+    end
     else if c = '$' && !i + 1 < n && (sql.[!i + 1] = '$' || is_ident_start sql.[!i + 1])
     then begin
       (* dollar-quoted string: $tag$ ... $tag$ *)
@@ -204,6 +208,11 @@ let rewrite_params ~file ~line sql =
   done;
   match !bad with
   | Some m -> err file line m
+  (* Named parameters are numbered from $1 by our own counter, so mixing them
+     with explicit $n placeholders would silently collide -- :b in
+     "WHERE a = $1 AND b = :b" would also become $1. Use one style. *)
+  | None when !saw_positional && !next_index > 0 ->
+      err file line "mix of named (:name) and positional ($n) parameters; use one style"
   | None ->
       let params =
         !order
@@ -341,7 +350,12 @@ let build_dynamic ~file ~line segs =
             Ok
               ( fst variants.(nvariants - 1),
                 snd variants.(nvariants - 1),
-                { nblocks; variant_sqls = Array.map fst variants; block_params } ))
+                {
+                  nblocks;
+                  variant_sqls = Array.map fst variants;
+                  variant_nparams = Array.map (fun (_, ps) -> List.length ps) variants;
+                  block_params;
+                } ))
   end
 
 (* ---------- headers ---------- *)

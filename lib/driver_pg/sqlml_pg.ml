@@ -10,39 +10,6 @@
    or [Value.Null] and are parsed by [Sqlml.Row], which is why those decoders
    accept text. *)
 
-let hex_of_octets s =
-  let b = Buffer.create ((String.length s * 2) + 2) in
-  Buffer.add_string b "\\x";
-  String.iter (fun c -> Buffer.add_string b (Printf.sprintf "%02x" (Char.code c))) s;
-  Buffer.contents b
-
-let text_of_value : Sqlml.Value.t -> string option = function
-  | Sqlml.Value.Null -> None
-  | Sqlml.Value.Bool b -> Some (if b then "t" else "f")
-  | Sqlml.Value.Int n -> Some (string_of_int n)
-  (* %.17g round-trips a double exactly *)
-  | Sqlml.Value.Float f -> Some (Printf.sprintf "%.17g" f)
-  | Sqlml.Value.Text s -> Some s
-  | Sqlml.Value.Octets s -> Some (hex_of_octets s)
-
-(* ---------- prepared-statement cache ----------
-
-   Each distinct SQL text is prepared once per connection and executed by name
-   afterwards, so the server parses and plans a query once instead of on every
-   call. Two realities shape the implementation:
-
-   - Not every statement can be prepared: PREPARE covers SELECT / INSERT /
-     UPDATE / DELETE / MERGE / VALUES, and nothing else -- BEGIN, SAVEPOINT,
-     DECLARE, FETCH all refuse. Rather than pattern-match SQL, a failed prepare
-     marks the text [Unpreparable] and it runs through PQexecParams forever.
-     Correctness is unaffected either way; this cache is performance only.
-
-   - A statement prepared inside a transaction dies with that transaction's
-     rollback, while the cache entry survives. The next execution then fails
-     with 26000 invalid_sql_statement_name -- so that code (and 0A000, "cached
-     plan must not change result type", after DDL) re-prepares and retries
-     once. *)
-
 module Raw = struct
   type prep = Prepared of string | Unpreparable
   type conn = { raw : Pq.conn; stmts : (string, prep) Hashtbl.t; mutable counter : int }
@@ -59,7 +26,7 @@ module Raw = struct
     | None | Some _ -> false
 
   let run conn sql params =
-    let args = Array.of_list (List.map text_of_value params) in
+    let args = Array.of_list (List.map Sqlml.Value.to_pg_text params) in
     let exec_direct () = Pq.exec_params conn.raw sql args in
     let prepare_as stmt =
       let r = Pq.prepare conn.raw stmt sql in
@@ -127,16 +94,7 @@ end
 
 (* ---------- connecting ---------- *)
 
-let conninfo_of_env () =
-  match Sys.getenv_opt "DATABASE_URL" with
-  | Some u when String.trim u <> "" -> u
-  | _ ->
-      let get k d = match Sys.getenv_opt k with Some v when v <> "" -> v | _ -> d in
-      Printf.sprintf "host=%s port=%s user=%s dbname=%s%s" (get "PGHOST" "127.0.0.1")
-        (get "PGPORT" "5432") (get "PGUSER" "postgres") (get "PGDATABASE" "postgres")
-        (match Sys.getenv_opt "PGPASSWORD" with
-        | Some p when p <> "" -> " password=" ^ p
-        | _ -> "")
+let conninfo_of_env = Pq.conninfo_of_env
 
 let open_raw conninfo =
   let c = Pq.connect conninfo in

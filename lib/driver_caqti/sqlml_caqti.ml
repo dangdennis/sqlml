@@ -45,20 +45,6 @@ let rec arg_type n =
           ( Caqti_type.t2 text t,
             fun l -> match l with x :: tl -> (x, f tl) | [] -> (None, f []) )
 
-let hex_of_octets s =
-  let b = Buffer.create ((String.length s * 2) + 2) in
-  Buffer.add_string b "\\x";
-  String.iter (fun c -> Buffer.add_string b (Printf.sprintf "%02x" (Char.code c))) s;
-  Buffer.contents b
-
-let text_of_value : Sqlml.Value.t -> string option = function
-  | Sqlml.Value.Null -> None
-  | Sqlml.Value.Bool b -> Some (if b then "t" else "f")
-  | Sqlml.Value.Int n -> Some (string_of_int n)
-  | Sqlml.Value.Float f -> Some (Printf.sprintf "%.17g" f)
-  | Sqlml.Value.Text s -> Some s
-  | Sqlml.Value.Octets s -> Some (hex_of_octets s)
-
 (* ---------- the driver ---------- *)
 
 (* Caqti's own [cause] enumeration is deliberately incomplete, but the Postgres
@@ -100,7 +86,7 @@ module Raw = struct
       Caqti_request.create ~oneshot:true at rt Caqti_mult.zero_or_more (fun _ ->
           Caqti_query.of_string_exn sql)
     in
-    match Db.collect_list req (mk (List.map text_of_value params)) with
+    match Db.collect_list req (mk (List.map Sqlml.Value.to_pg_text params)) with
     | Ok rows -> Ok (List.map (fun r -> Array.of_list (get r)) rows)
     | Error e -> Error (diag_of_caqti e)
 
@@ -113,7 +99,7 @@ module Raw = struct
       Caqti_request.create ~oneshot:true at Caqti_type.unit Caqti_mult.zero (fun _ ->
           Caqti_query.of_string_exn sql)
     in
-    match Db.exec req (mk (List.map text_of_value params)) with
+    match Db.exec req (mk (List.map Sqlml.Value.to_pg_text params)) with
     | Ok () -> Ok 1
     | Error e -> Error (diag_of_caqti e)
 end

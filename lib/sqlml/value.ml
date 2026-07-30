@@ -98,3 +98,18 @@ end
 
 (* [of_list print xs] encodes an array column or parameter. *)
 let of_list print xs = Text (array_literal (List.map print xs))
+
+(* The wire encoding both drivers share: PostgreSQL text format, [None] for SQL
+   NULL. Living here rather than per driver means the two drivers cannot drift
+   apart on how a value is rendered. *)
+let to_pg_text = function
+  | Null -> None
+  | Bool b -> Some (if b then "t" else "f")
+  | Int n -> Some (string_of_int n)
+  | Float f -> Some (Printf.sprintf "%.17g" f)
+  | Text s -> Some s
+  | Octets s ->
+      let b = Buffer.create ((String.length s * 2) + 2) in
+      Buffer.add_string b "\\x";
+      String.iter (fun c -> Buffer.add_string b (Printf.sprintf "%02x" (Char.code c))) s;
+      Some (Buffer.contents b)

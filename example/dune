@@ -1,6 +1,6 @@
 (executables
- (names main e2e app web)
- (modules main db wide e2e app web)
+ (names e2e app web)
+ (modules e2e app web)
  (libraries
   sqlml
   sqlml_pg

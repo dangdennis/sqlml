@@ -95,3 +95,17 @@ let query conn sql =
                 Array.init cols (fun j -> if getisnull r i j then "" else getvalue r i j))
           in
           Ok rows)
+
+(* Connection string from the conventional environment variables. Shared by the
+   generator and the libpq driver so the env policy cannot drift; the Caqti
+   driver mirrors it in URI form. *)
+let conninfo_of_env () =
+  match Sys.getenv_opt "DATABASE_URL" with
+  | Some u when String.trim u <> "" -> u
+  | _ ->
+      let get k d = match Sys.getenv_opt k with Some v when v <> "" -> v | _ -> d in
+      Printf.sprintf "host=%s port=%s user=%s dbname=%s%s" (get "PGHOST" "127.0.0.1")
+        (get "PGPORT" "5432") (get "PGUSER" "postgres") (get "PGDATABASE" "postgres")
+        (match Sys.getenv_opt "PGPASSWORD" with
+        | Some p when p <> "" -> " password=" ^ p
+        | _ -> "")

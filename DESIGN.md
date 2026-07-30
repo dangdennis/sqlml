@@ -148,8 +148,9 @@ before handing to `Ptime.of_rfc3339`.
 together they cover the table — emit one shared `<table>_row` and reuse it
 across every such query. Otherwise the query keeps its own type. Without this,
 two `SELECT *` queries produce field-for-field identical but *nominally
-distinct* records, and no helper can be shared between them. See
-`example/wide.mli`.
+distinct* records, and no helper can be shared between them. (The wide-table
+exploration that settled this lived in `example/wide.mli`; retired once the
+generator produced the real thing — see git history.)
 
 **Nullable parameters are optional arguments**, sorted after the mandatory ones
 so the mandatory arguments stay in SQL order. A query with any nullable
