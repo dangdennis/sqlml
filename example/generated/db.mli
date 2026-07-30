@@ -55,6 +55,12 @@ type find_users_row = {
   balance : Decimal.t;
 }
 
+type get_booking_row = {
+  on_date : Ptime.date;
+  at_time : Ptime.Span.t;
+  duration : Sqlml.Interval.t;
+}
+
 module Count_users_by_status : sig
   type params = unit
 
@@ -313,4 +319,45 @@ val find_users_exn :
   unit ->
   find_users_row list
 (** Raising {!find_users}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
+module Put_booking : sig
+  type params = {
+    id : Uuidm.t;
+    on_date : Ptime.date;
+    at_time : Ptime.Span.t;
+    duration : Sqlml.Interval.t;
+  }
+
+  include Sqlml.Query.EXEC with type params := params
+end
+
+val put_booking :
+  Sqlml.conn ->
+  id:Uuidm.t ->
+  on_date:Ptime.date ->
+  at_time:Ptime.Span.t ->
+  duration:Sqlml.Interval.t ->
+  (int, Sqlml.Error.t) result
+
+val put_booking_exn :
+  Sqlml.conn ->
+  id:Uuidm.t ->
+  on_date:Ptime.date ->
+  at_time:Ptime.Span.t ->
+  duration:Sqlml.Interval.t ->
+  int
+(** Raising {!put_booking}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
+module Get_booking : sig
+  type params = { id : Uuidm.t }
+
+  include Sqlml.Query.ONE_STRICT with type params := params and type row = get_booking_row
+end
+
+val get_booking : Sqlml.conn -> id:Uuidm.t -> (get_booking_row, Sqlml.Error.t) result
+
+val get_booking_exn : Sqlml.conn -> id:Uuidm.t -> get_booking_row
+(** Raising {!get_booking}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)

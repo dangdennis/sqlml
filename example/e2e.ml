@@ -441,6 +441,37 @@ let () =
     (count ~email:"%@%" ~status:Db.Active ~min_balance:(Decimal.of_string "1") () = 2);
   List.iter (fun i -> ignore (Db.delete_user_exn conn ~id:i)) [ d1; d2; d3 ];
 
+  (* ---------- date / time / interval ---------- *)
+  let bk = uuid "cdcdcdcd-0000-4000-8000-000000000001" in
+  let at_time =
+    Option.get (Ptime.Span.of_float_s ((14. *. 3600.) +. (30. *. 60.) +. 5.25))
+  in
+  let duration =
+    Sqlml.Interval.make ~years:1 ~months:2 ~days:3 ~hours:4 ~minutes:5 ~seconds:6 ()
+  in
+  ignore (Db.put_booking_exn conn ~id:bk ~on_date:(2026, 7, 30) ~at_time ~duration);
+  (match Db.get_booking conn ~id:bk with
+  | Ok b ->
+      check "date round-trips" (b.Db.on_date = (2026, 7, 30));
+      check "time round-trips to the microsecond" (Ptime.Span.equal b.Db.at_time at_time);
+      check "interval round-trips (postgres style out)"
+        (Sqlml.Interval.equal b.Db.duration duration)
+  | Error e ->
+      print_endline (Sqlml.Error.to_string e);
+      check "date/time/interval round-trip" false);
+
+  (* a negative mixed interval, which postgres prints with interior signs *)
+  let weird = Sqlml.Interval.make ~months:(-1) ~days:2 ~hours:(-3) () in
+  ignore (Db.put_booking_exn conn ~id:bk ~on_date:(2024, 2, 29) ~at_time ~duration:weird);
+  (match Db.get_booking conn ~id:bk with
+  | Ok b ->
+      check "leap-day date" (b.Db.on_date = (2024, 2, 29));
+      check "negative mixed interval round-trips"
+        (Sqlml.Interval.equal b.Db.duration weird)
+  | Error e ->
+      print_endline (Sqlml.Error.to_string e);
+      check "negative interval round-trip" false);
+
   if !failures = 0 then print_endline "all good"
   else (
     Printf.printf "%d failure(s)\n" !failures;

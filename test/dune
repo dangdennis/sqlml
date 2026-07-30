@@ -1,3 +1,3 @@
 (tests
- (names test_sqlml test_generated test_sqlstate)
+ (names test_sqlml test_generated test_sqlstate test_interval)
  (libraries sqlml generated ptime uuidm decimal yojson))

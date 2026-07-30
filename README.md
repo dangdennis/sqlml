@@ -136,7 +136,10 @@ reached through an outer join, and a computed column with no originating table.
 | `json`, `jsonb` | `Yojson.Safe.t` |
 | enum types | a variant |
 | `T[]` | `T list` |
-| `date`, `time`, `interval`, `inet` | `string` |
+| `date` | `Ptime.date` |
+| `time` | `Ptime.Span.t` (since midnight) |
+| `interval` | `Sqlml.Interval.t` |
+| `timetz`, `inet` | `string` |
 
 An unmapped type is an error naming the column, not a silent fall back to
 `string`.
@@ -151,6 +154,10 @@ SELECT id, email FROM users WHERE id = ANY(:ids);
 ```ocaml
 val get_users_by_ids : Sqlml.conn -> ids:Uuidm.t list -> (get_users_by_ids_row list, _) result
 ```
+
+`Sqlml.Interval.t` is `{ months; days; micros }` — three independent fields,
+because a month has no fixed length and a day is not always 24 hours. Parsing
+accepts all four PostgreSQL `IntervalStyle` output formats.
 
 Note that `jsonb` is a normalised representation: PostgreSQL reorders object
 keys and drops duplicates, so a round-trip preserves the value, not the text.

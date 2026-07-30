@@ -69,6 +69,12 @@ type find_users_row = {
   balance : Decimal.t;
 }
 
+type get_booking_row = {
+  on_date : Ptime.date;
+  at_time : Ptime.Span.t;
+  duration : Sqlml.Interval.t;
+}
+
 module Count_users_by_status = struct
   type params = unit
   type row = count_users_by_status_row
@@ -528,3 +534,61 @@ let find_users conn ~org ~limit ?email ?status ?min_balance () =
 
 let find_users_exn conn ~org ~limit ?email ?status ?min_balance () =
   Sqlml.or_raise (find_users conn ~org ~limit ?email ?status ?min_balance ())
+
+module Put_booking = struct
+  type params = {
+    id : Uuidm.t;
+    on_date : Ptime.date;
+    at_time : Ptime.Span.t;
+    duration : Sqlml.Interval.t;
+  }
+
+  let name = "PutBooking"
+
+  let sql (_ : params) =
+    "INSERT INTO bookings (id, on_date, at_time, duration)\n\
+     VALUES ($1, $2, $3, $4)\n\
+     ON CONFLICT (id) DO UPDATE\n\
+    \  SET on_date = excluded.on_date, at_time = excluded.at_time,\n\
+    \      duration = excluded.duration"
+
+  let encode (p : params) =
+    [
+      Sqlml.Value.of_uuid p.id;
+      Sqlml.Value.of_date p.on_date;
+      Sqlml.Value.of_time_of_day p.at_time;
+      Sqlml.Value.of_interval p.duration;
+    ]
+
+  let cardinality = Sqlml.Query.Exec
+end
+
+let put_booking conn ~id ~on_date ~at_time ~duration =
+  Sqlml.exec (module Put_booking) conn { Put_booking.id; on_date; at_time; duration }
+
+let put_booking_exn conn ~id ~on_date ~at_time ~duration =
+  Sqlml.or_raise (put_booking conn ~id ~on_date ~at_time ~duration)
+
+module Get_booking = struct
+  type params = { id : Uuidm.t }
+  type row = get_booking_row
+
+  let name = "GetBooking"
+  let sql (_ : params) = "SELECT on_date, at_time, duration FROM bookings WHERE id = $1"
+  let encode (p : params) = [ Sqlml.Value.of_uuid p.id ]
+
+  let decode r : get_booking_row =
+    {
+      on_date = Sqlml.Row.date r 0;
+      at_time = Sqlml.Row.time_of_day r 1;
+      duration = Sqlml.Row.interval r 2;
+    }
+
+  let columns = 3
+  let cardinality = Sqlml.Query.One_strict
+end
+
+let get_booking conn ~id =
+  Sqlml.fetch_one_strict (module Get_booking) conn { Get_booking.id }
+
+let get_booking_exn conn ~id = Sqlml.or_raise (get_booking conn ~id)

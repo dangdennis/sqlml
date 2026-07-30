@@ -108,6 +108,49 @@ let uuid r i =
       | None -> raise (Bad { column = i; expected = "uuid"; got = s }))
   | v -> bad i "uuid" v
 
+let parse_date s =
+  match String.split_on_char '-' s with
+  | [ y; m; d ] ->
+      let date = (int_of_string y, int_of_string m, int_of_string d) in
+      if Ptime.of_date date = None then failwith "date" else date
+  | _ -> failwith "date"
+
+let date r i =
+  match get r i with
+  | Value.Text s -> (
+      try parse_date s with _ -> raise (Bad { column = i; expected = "date"; got = s }))
+  | v -> bad i "date" v
+
+let parse_time_of_day s =
+  (* HH:MM:SS[.ffffff] since midnight *)
+  match String.split_on_char ':' s with
+  | [ h; m; sec ] -> (
+      let sec, us =
+        match String.split_on_char '.' sec with
+        | [ w ] -> (int_of_string w, 0.)
+        | [ w; f ] -> (int_of_string w, float_of_string ("0." ^ f))
+        | _ -> failwith "time"
+      in
+      let total =
+        float_of_int ((int_of_string h * 3600) + (int_of_string m * 60) + sec) +. us
+      in
+      match Ptime.Span.of_float_s total with Some sp -> sp | None -> failwith "time")
+  | _ -> failwith "time"
+
+let time_of_day r i =
+  match get r i with
+  | Value.Text s -> (
+      try parse_time_of_day s
+      with _ -> raise (Bad { column = i; expected = "time"; got = s }))
+  | v -> bad i "time" v
+
+let interval r i =
+  match get r i with
+  | Value.Text s -> (
+      try Interval.of_string s
+      with _ -> raise (Bad { column = i; expected = "interval"; got = s }))
+  | v -> bad i "interval" v
+
 let json r i =
   match get r i with
   | Value.Text s -> (
@@ -155,6 +198,9 @@ module Elem = struct
     | Error _ -> failwith "timestamp"
 
   let json = Yojson.Safe.from_string
+  let date = parse_date
+  let time_of_day = parse_time_of_day
+  let interval = Interval.of_string
 end
 
 let parse_array_literal ~column s =

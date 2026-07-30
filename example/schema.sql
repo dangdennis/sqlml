@@ -26,3 +26,11 @@ CREATE TABLE tag_sets (
   states user_status[] NOT NULL DEFAULT '{}',
   meta   jsonb NOT NULL DEFAULT '{}'
 );
+
+-- Temporal types beyond timestamptz.
+CREATE TABLE bookings (
+  id       uuid PRIMARY KEY,
+  on_date  date NOT NULL,
+  at_time  time NOT NULL,
+  duration interval NOT NULL
+);

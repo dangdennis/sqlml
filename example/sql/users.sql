@@ -76,3 +76,13 @@ WHERE organization_id = :org
   /*? AND balance >= :min_balance */
 ORDER BY email
 LIMIT :limit;
+
+-- name: PutBooking :exec
+INSERT INTO bookings (id, on_date, at_time, duration)
+VALUES (:id, :on_date, :at_time, :duration)
+ON CONFLICT (id) DO UPDATE
+  SET on_date = excluded.on_date, at_time = excluded.at_time,
+      duration = excluded.duration;
+
+-- name: GetBooking :one!
+SELECT on_date, at_time, duration FROM bookings WHERE id = :id;

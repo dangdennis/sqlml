@@ -13,6 +13,9 @@ type t =
   | Ptime
   | Decimal
   | Json
+  | Date
+  | Time_of_day
+  | Interval
   | Enum of string * string list (* ocaml type name, labels in sort order *)
   | Custom of custom (* from sqlml.toml *)
   | Array of t
@@ -28,6 +31,9 @@ let rec ocaml_type = function
   | Ptime -> "Ptime.t"
   | Decimal -> "Decimal.t"
   | Json -> "Yojson.Safe.t"
+  | Date -> "Ptime.date"
+  | Time_of_day -> "Ptime.Span.t"
+  | Interval -> "Sqlml.Interval.t"
   | Enum (n, _) -> n
   | Custom c -> c.c_ocaml
   | Array t -> ocaml_type t ^ " list"
@@ -44,6 +50,9 @@ let rec decoder = function
   | Ptime -> "Sqlml.Row.ptime"
   | Decimal -> "Sqlml.Row.decimal"
   | Json -> "Sqlml.Row.json"
+  | Date -> "Sqlml.Row.date"
+  | Time_of_day -> "Sqlml.Row.time_of_day"
+  | Interval -> "Sqlml.Row.interval"
   | Enum (n, _) -> n ^ "_of_row"
   | Custom c -> Printf.sprintf "(Sqlml.Row.custom %s)" c.c_of_string
   | Array t -> Printf.sprintf "(Sqlml.Row.list %s)" (elem_parser t)
@@ -60,6 +69,9 @@ and elem_parser = function
   | Ptime -> "Sqlml.Row.Elem.ptime"
   | Decimal -> "Sqlml.Row.Elem.decimal"
   | Json -> "Sqlml.Row.Elem.json"
+  | Date -> "Sqlml.Row.Elem.date"
+  | Time_of_day -> "Sqlml.Row.Elem.time_of_day"
+  | Interval -> "Sqlml.Row.Elem.interval"
   | Enum (n, _) -> n ^ "_of_string"
   | Custom c -> c.c_of_string
   | Array _ -> "(fun _ -> failwith \"nested arrays are not supported\")"
@@ -76,6 +88,9 @@ let rec encoder = function
   | Ptime -> "Sqlml.Value.of_ptime"
   | Decimal -> "Sqlml.Value.of_decimal"
   | Json -> "Sqlml.Value.of_json"
+  | Date -> "Sqlml.Value.of_date"
+  | Time_of_day -> "Sqlml.Value.of_time_of_day"
+  | Interval -> "Sqlml.Value.of_interval"
   | Enum (n, _) -> n ^ "_to_value"
   | Custom c -> Printf.sprintf "(fun x -> Sqlml.Value.of_string (%s x))" c.c_to_string
   | Array t -> Printf.sprintf "(Sqlml.Value.of_list %s)" (elem_printer t)
@@ -90,6 +105,9 @@ and elem_printer = function
   | Ptime -> "Sqlml.Value.Print.ptime"
   | Decimal -> "Sqlml.Value.Print.decimal"
   | Json -> "Sqlml.Value.Print.json"
+  | Date -> "Sqlml.Value.Print.date"
+  | Time_of_day -> "Sqlml.Value.Print.time_of_day"
+  | Interval -> "Sqlml.Value.Print.interval"
   | Enum (n, _) -> n ^ "_to_string"
   | Custom c -> c.c_to_string
   | Array _ -> "(fun _ -> failwith \"nested arrays are not supported\")"
@@ -111,8 +129,11 @@ let base_of_pg_name = function
   | "bytea" -> Some Bytes
   | "uuid" -> Some Uuid
   | "timestamp" | "timestamptz" -> Some Ptime
-  (* Ptime.of_rfc3339 needs a full date+time, so these stay textual for now *)
-  | "date" | "time" | "timetz" | "interval" -> Some String
+  | "date" -> Some Date
+  | "time" -> Some Time_of_day
+  | "interval" -> Some Interval
+  (* timetz is a type even the PostgreSQL docs discourage; it stays textual *)
+  | "timetz" -> Some String
   | "json" | "jsonb" -> Some Json
   | "inet" | "cidr" | "macaddr" | "macaddr8" -> Some String
   | _ -> None

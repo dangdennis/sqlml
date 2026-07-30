@@ -29,6 +29,7 @@ module Row = Row
 module Driver = Driver
 module Query = Query
 module Sqlstate = Sqlstate
+module Interval = Interval
 
 (* A connection handle.
 

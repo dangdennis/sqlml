@@ -32,6 +32,19 @@ let of_decimal d = Text (Decimal.to_string d)
 (* Postgres accepts RFC3339 on input regardless of its DateStyle setting. *)
 let of_ptime t = Text (Ptime.to_rfc3339 ~tz_offset_s:0 t)
 let of_json j = Text (Yojson.Safe.to_string j)
+let of_date (y, m, d) = Text (Printf.sprintf "%04d-%02d-%02d" y m d)
+
+(* time-of-day as a span since midnight *)
+let of_time_of_day span =
+  let us = Int64.of_float (Float.round (Ptime.Span.to_float_s span *. 1e6)) in
+  let sec = Int64.div us 1_000_000L and frac = Int64.rem us 1_000_000L in
+  let sec = Int64.to_int sec in
+  Text
+    (Printf.sprintf "%02d:%02d:%02d.%06Ld" (sec / 3600)
+       (sec mod 3600 / 60)
+       (sec mod 60) frac)
+
+let of_interval i = Text (Interval.to_string i)
 
 (* ---------- arrays ----------
 
@@ -78,6 +91,9 @@ module Print = struct
   let decimal = Decimal.to_string
   let ptime t = Ptime.to_rfc3339 ~tz_offset_s:0 t
   let json = Yojson.Safe.to_string
+  let date (y, m, d) = Printf.sprintf "%04d-%02d-%02d" y m d
+  let time_of_day span = match of_time_of_day span with Text s -> s | _ -> assert false
+  let interval = Interval.to_string
 end
 
 (* [of_list print xs] encodes an array column or parameter. *)
