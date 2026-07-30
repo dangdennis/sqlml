@@ -48,6 +48,13 @@ type get_user_strict_row = {
   created_at : Ptime.t;
 }
 
+type find_users_row = {
+  id : User_id.t;
+  email : string;
+  status : user_status;
+  balance : Decimal.t;
+}
+
 module Count_users_by_status : sig
   type params = unit
 
@@ -270,4 +277,40 @@ val get_user_strict :
 
 val get_user_strict_exn : Sqlml.conn -> id:Uuidm.t -> get_user_strict_row
 (** Raising {!get_user_strict}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
+module Find_users : sig
+  type params = {
+    org : Uuidm.t;
+    email : string option;
+    status : user_status option;
+    min_balance : Decimal.t option;
+    limit : int;
+  }
+
+  include Sqlml.Query.MANY with type params := params and type row = find_users_row
+end
+
+val find_users :
+  Sqlml.conn ->
+  org:Uuidm.t ->
+  limit:int ->
+  ?email:string ->
+  ?status:user_status ->
+  ?min_balance:Decimal.t ->
+  unit ->
+  (find_users_row list, Sqlml.Error.t) result
+(** Optional blocks: each /*? ... */ clause is included only when its parameter is
+    supplied. Every combination is verified against the database at codegen. *)
+
+val find_users_exn :
+  Sqlml.conn ->
+  org:Uuidm.t ->
+  limit:int ->
+  ?email:string ->
+  ?status:user_status ->
+  ?min_balance:Decimal.t ->
+  unit ->
+  find_users_row list
+(** Raising {!find_users}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)

@@ -405,6 +405,42 @@ let () =
   in
   check "repeated executions hit the cache" ok3;
 
+  (* ---------- optional blocks ---------- *)
+  let mk i email st bal =
+    ignore (Db.delete_user_exn conn ~id:i);
+    ignore
+      (Db.create_user_exn conn ~id:i ~organization_id:org ~email ~status:st
+         ~balance:(Decimal.of_string bal) ())
+  in
+  let d1 = uuid "abababab-0000-4000-8000-000000000001" in
+  let d2 = uuid "abababab-0000-4000-8000-000000000002" in
+  let d3 = uuid "abababab-0000-4000-8000-000000000003" in
+  mk d1 "dyn-a@example.com" Db.Active "5.00";
+  mk d2 "dyn-b@example.com" Db.Active "50.00";
+  mk d3 "dyn-c@other.org" Db.Banned "500.00";
+
+  let count ?email ?status ?min_balance () =
+    match Db.find_users conn ~org ~limit:100 ?email ?status ?min_balance () with
+    | Ok rows ->
+        List.length
+          (List.filter
+             (fun (r : Db.find_users_row) ->
+               String.length r.Db.email >= 4 && String.sub r.Db.email 0 4 = "dyn-")
+             rows)
+    | Error e ->
+        print_endline (Sqlml.Error.to_string e);
+        -1
+  in
+  check "no filters -> all 3" (count () = 3);
+  check "email filter" (count ~email:"%@example.com" () = 2);
+  check "status filter (enum param in a block)" (count ~status:Db.Banned () = 1);
+  check "numeric filter" (count ~min_balance:(Decimal.of_string "40") () = 2);
+  check "two filters combine"
+    (count ~email:"%@example.com" ~min_balance:(Decimal.of_string "40") () = 1);
+  check "all three filters"
+    (count ~email:"%@%" ~status:Db.Active ~min_balance:(Decimal.of_string "1") () = 2);
+  List.iter (fun i -> ignore (Db.delete_user_exn conn ~id:i)) [ d1; d2; d3 ];
+
   if !failures = 0 then print_endline "all good"
   else (
     Printf.printf "%d failure(s)\n" !failures;

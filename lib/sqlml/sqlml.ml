@@ -92,7 +92,7 @@ let run_query (conn : conn) ~name ~sql ~params ~columns =
 let fetch_all (module Q : Query.MANY) (conn : conn) (p : Q.params) :
     (Q.row list, Error.t) result =
   match
-    run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns
+    run_query conn ~name:Q.name ~sql:(Q.sql p) ~params:(Q.encode p) ~columns:Q.columns
   with
   | Error e -> Error e
   | Ok rows -> ( try Ok (List.map Q.decode rows) with e -> Error (decode_fail Q.name e))
@@ -100,7 +100,7 @@ let fetch_all (module Q : Query.MANY) (conn : conn) (p : Q.params) :
 let fetch_one (module Q : Query.ONE) (conn : conn) (p : Q.params) :
     (Q.row option, Error.t) result =
   match
-    run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns
+    run_query conn ~name:Q.name ~sql:(Q.sql p) ~params:(Q.encode p) ~columns:Q.columns
   with
   | Error e -> Error e
   | Ok [] -> Ok None
@@ -113,14 +113,14 @@ let fetch_one (module Q : Query.ONE) (conn : conn) (p : Q.params) :
 let exec (module Q : Query.EXEC) (conn : conn) (p : Q.params) : (int, Error.t) result =
   match conn with
   | Driver.Conn ((module D), c, _) -> (
-      match D.exec c ~sql:Q.sql ~params:(Q.encode p) with
+      match D.exec c ~sql:(Q.sql p) ~params:(Q.encode p) with
       | Ok n -> Ok n
       | Error (d : Driver.error) ->
           Error
             (Error.Execute
                {
                  query = Q.name;
-                 sql = Q.sql;
+                 sql = Q.sql p;
                  message = d.Driver.message;
                  sqlstate = d.Driver.sqlstate;
                  detail = d.Driver.detail;
@@ -133,7 +133,7 @@ let exec (module Q : Query.EXEC) (conn : conn) (p : Q.params) : (int, Error.t) r
 let fetch_one_strict (module Q : Query.ONE_STRICT) (conn : conn) (p : Q.params) :
     (Q.row, Error.t) result =
   match
-    run_query conn ~name:Q.name ~sql:Q.sql ~params:(Q.encode p) ~columns:Q.columns
+    run_query conn ~name:Q.name ~sql:(Q.sql p) ~params:(Q.encode p) ~columns:Q.columns
   with
   | Error e -> Error e
   | Ok [] -> Error (Error.Cardinality { query = Q.name; expected = "exactly 1"; got = 0 })
@@ -268,7 +268,7 @@ let fetch_fold (module Q : Query.MANY) ?(batch = 500) (conn : conn) (p : Q.param
     | Driver.Conn ((module D), c, _) -> (
         match
           D.exec c
-            ~sql:(Printf.sprintf "DECLARE %s NO SCROLL CURSOR FOR %s" cur Q.sql)
+            ~sql:(Printf.sprintf "DECLARE %s NO SCROLL CURSOR FOR %s" cur (Q.sql p))
             ~params:(Q.encode p)
         with
         | Ok _ -> Ok ()
@@ -277,7 +277,7 @@ let fetch_fold (module Q : Query.MANY) ?(batch = 500) (conn : conn) (p : Q.param
               (Error.Execute
                  {
                    query = Q.name;
-                   sql = Q.sql;
+                   sql = Q.sql p;
                    message = d.Driver.message;
                    sqlstate = d.Driver.sqlstate;
                    detail = d.Driver.detail;

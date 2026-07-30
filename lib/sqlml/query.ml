@@ -25,7 +25,11 @@ module type BASE = sig
   type params
 
   val name : string
-  val sql : string
+
+  (* The SQL text to execute for these parameters. Static queries ignore the
+     argument; a query with /*? ... */ optional blocks selects the pre-built,
+     codegen-verified variant matching which optional parameters are set. *)
+  val sql : params -> string
   val encode : params -> Value.t list
 end
 

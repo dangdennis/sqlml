@@ -62,12 +62,19 @@ type get_user_strict_row = {
   created_at : Ptime.t;
 }
 
+type find_users_row = {
+  id : User_id.t;
+  email : string;
+  status : user_status;
+  balance : Decimal.t;
+}
+
 module Count_users_by_status = struct
   type params = unit
   type row = count_users_by_status_row
 
   let name = "CountUsersByStatus"
-  let sql = "SELECT status, count(*) AS \"n!\" FROM users GROUP BY status"
+  let sql (_ : params) = "SELECT status, count(*) AS \"n!\" FROM users GROUP BY status"
   let encode () = []
 
   let decode r : count_users_by_status_row =
@@ -86,7 +93,7 @@ module Get_user = struct
 
   let name = "GetUser"
 
-  let sql =
+  let sql (_ : params) =
     "SELECT id, email, display_name, status, balance, created_at\n\
      FROM users\n\
      WHERE id = $1"
@@ -116,7 +123,7 @@ module Search_users = struct
 
   let name = "SearchUsers"
 
-  let sql =
+  let sql (_ : params) =
     "SELECT id, email, created_at\n\
      FROM users\n\
      WHERE organization_id = $1\n\
@@ -157,7 +164,7 @@ module Count_posts_by_user = struct
 
   let name = "CountPostsByUser"
 
-  let sql =
+  let sql (_ : params) =
     "SELECT\n\
     \  u.email,\n\
     \  p.title AS \"title?\",\n\
@@ -186,7 +193,7 @@ module Delete_user = struct
   type params = { id : Uuidm.t }
 
   let name = "DeleteUser"
-  let sql = "DELETE FROM users WHERE id = $1"
+  let sql (_ : params) = "DELETE FROM users WHERE id = $1"
   let encode (p : params) = [ Sqlml.Value.of_uuid p.id ]
   let cardinality = Sqlml.Query.Exec
 end
@@ -200,7 +207,7 @@ module Get_user_full = struct
 
   let name = "GetUserFull"
 
-  let sql =
+  let sql (_ : params) =
     "SELECT id, organization_id, email, display_name, status, balance, created_at\n\
      FROM users\n\
      WHERE id = $1"
@@ -232,7 +239,7 @@ module Set_display_name = struct
   type params = { display_name : string option; id : Uuidm.t }
 
   let name = "SetDisplayName"
-  let sql = "UPDATE users SET display_name = $1 WHERE id = $2"
+  let sql (_ : params) = "UPDATE users SET display_name = $1 WHERE id = $2"
 
   let encode (p : params) =
     [
@@ -261,7 +268,7 @@ module Create_user = struct
 
   let name = "CreateUser"
 
-  let sql =
+  let sql (_ : params) =
     "INSERT INTO users (id, organization_id, email, display_name, status, balance)\n\
      VALUES ($1, $2, $3, $4, $5, $6)"
 
@@ -293,7 +300,7 @@ module Get_users_by_ids = struct
   type row = get_users_by_ids_row
 
   let name = "GetUsersByIds"
-  let sql = "SELECT id, email FROM users WHERE id = ANY($1)"
+  let sql (_ : params) = "SELECT id, email FROM users WHERE id = ANY($1)"
   let encode (p : params) = [ (Sqlml.Value.of_list Sqlml.Value.Print.uuid) p.ids ]
 
   let decode r : get_users_by_ids_row =
@@ -320,7 +327,7 @@ module Put_tag_set = struct
 
   let name = "PutTagSet"
 
-  let sql =
+  let sql (_ : params) =
     "INSERT INTO tag_sets (id, owner, tags, scores, states, meta)\n\
      VALUES ($1, $2, $3, $4, $5, $6)\n\
      ON CONFLICT (id) DO UPDATE\n\
@@ -354,7 +361,7 @@ module Get_tag_set = struct
   type row = get_tag_set_row
 
   let name = "GetTagSet"
-  let sql = "SELECT tags, scores, states, meta FROM tag_sets WHERE id = $1"
+  let sql (_ : params) = "SELECT tags, scores, states, meta FROM tag_sets WHERE id = $1"
   let encode (p : params) = [ Sqlml.Value.of_uuid p.id ]
 
   let decode r : get_tag_set_row =
@@ -378,7 +385,7 @@ module Get_user_strict = struct
 
   let name = "GetUserStrict"
 
-  let sql =
+  let sql (_ : params) =
     "SELECT id, email, display_name, status, balance, created_at\n\
      FROM users\n\
      WHERE id = $1"
@@ -403,3 +410,121 @@ let get_user_strict conn ~id =
   Sqlml.fetch_one_strict (module Get_user_strict) conn { Get_user_strict.id }
 
 let get_user_strict_exn conn ~id = Sqlml.or_raise (get_user_strict conn ~id)
+
+module Find_users = struct
+  type params = {
+    org : Uuidm.t;
+    email : string option;
+    status : user_status option;
+    min_balance : Decimal.t option;
+    limit : int;
+  }
+
+  type row = find_users_row
+
+  let name = "FindUsers"
+
+  let variants =
+    [|
+      "SELECT id, email, status, balance\n\
+       FROM users\n\
+       WHERE organization_id = $1\n\
+      \  \n\
+      \  \n\
+      \  \n\
+       ORDER BY email\n\
+       LIMIT $2";
+      "SELECT id, email, status, balance\n\
+       FROM users\n\
+       WHERE organization_id = $1\n\
+      \   AND email ILIKE $2 \n\
+      \  \n\
+      \  \n\
+       ORDER BY email\n\
+       LIMIT $3";
+      "SELECT id, email, status, balance\n\
+       FROM users\n\
+       WHERE organization_id = $1\n\
+      \  \n\
+      \   AND status = $2 \n\
+      \  \n\
+       ORDER BY email\n\
+       LIMIT $3";
+      "SELECT id, email, status, balance\n\
+       FROM users\n\
+       WHERE organization_id = $1\n\
+      \   AND email ILIKE $2 \n\
+      \   AND status = $3 \n\
+      \  \n\
+       ORDER BY email\n\
+       LIMIT $4";
+      "SELECT id, email, status, balance\n\
+       FROM users\n\
+       WHERE organization_id = $1\n\
+      \  \n\
+      \  \n\
+      \   AND balance >= $2 \n\
+       ORDER BY email\n\
+       LIMIT $3";
+      "SELECT id, email, status, balance\n\
+       FROM users\n\
+       WHERE organization_id = $1\n\
+      \   AND email ILIKE $2 \n\
+      \  \n\
+      \   AND balance >= $3 \n\
+       ORDER BY email\n\
+       LIMIT $4";
+      "SELECT id, email, status, balance\n\
+       FROM users\n\
+       WHERE organization_id = $1\n\
+      \  \n\
+      \   AND status = $2 \n\
+      \   AND balance >= $3 \n\
+       ORDER BY email\n\
+       LIMIT $4";
+      "SELECT id, email, status, balance\n\
+       FROM users\n\
+       WHERE organization_id = $1\n\
+      \   AND email ILIKE $2 \n\
+      \   AND status = $3 \n\
+      \   AND balance >= $4 \n\
+       ORDER BY email\n\
+       LIMIT $5";
+    |]
+
+  let sql (p : params) =
+    let b0 = match p.email with Some _ -> true | None -> false in
+    let b1 = match p.status with Some _ -> true | None -> false in
+    let b2 = match p.min_balance with Some _ -> true | None -> false in
+    variants.((if b0 then 1 else 0) lor (if b1 then 2 else 0) lor if b2 then 4 else 0)
+
+  let encode (p : params) =
+    List.concat
+      [
+        [ Sqlml.Value.of_uuid p.org ];
+        (match p.email with None -> [] | Some v -> [ Sqlml.Value.of_string v ]);
+        (match p.status with None -> [] | Some v -> [ user_status_to_value v ]);
+        (match p.min_balance with None -> [] | Some v -> [ Sqlml.Value.of_decimal v ]);
+        [ Sqlml.Value.of_int p.limit ];
+      ]
+
+  let decode r : find_users_row =
+    {
+      id = (Sqlml.Row.custom User_id.of_string) r 0;
+      email = Sqlml.Row.string r 1;
+      status = user_status_of_row r 2;
+      balance = Sqlml.Row.decimal r 3;
+    }
+
+  let columns = 4
+  let cardinality = Sqlml.Query.Many
+end
+
+let find_users conn ~org ~limit ?email ?status ?min_balance () =
+  Sqlml.fetch_all
+    (module Find_users)
+    conn
+    { Find_users.org; email; status; min_balance; limit }
+
+let find_users_exn conn ~org ~limit ?email ?status ?min_balance () =
+  Sqlml.or_raise (find_users conn ~org ~limit ?email ?status ?min_balance ())

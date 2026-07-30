@@ -64,3 +64,15 @@ SELECT tags, scores, states, meta FROM tag_sets WHERE id = :id;
 SELECT id, email, display_name, status, balance, created_at
 FROM users
 WHERE id = :id;
+
+-- name: FindUsers :many
+-- Optional blocks: each /*? ... */ clause is included only when its parameter
+-- is supplied. Every combination is verified against the database at codegen.
+SELECT id, email, status, balance
+FROM users
+WHERE organization_id = :org
+  /*? AND email ILIKE :email */
+  /*? AND status = :status */
+  /*? AND balance >= :min_balance */
+ORDER BY email
+LIMIT :limit;

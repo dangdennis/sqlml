@@ -39,7 +39,7 @@ module Get_user = struct
   type row = { id : int; email : string; display_name : string option }
 
   let name = "GetUser"
-  let sql = "SELECT id, email, display_name FROM users WHERE id = $1"
+  let sql (_ : params) = "SELECT id, email, display_name FROM users WHERE id = $1"
 
   (* annotation required: [row] also has an [id] field and is defined later, so
      an unannotated [{ id }] pattern would resolve to [row]. The generator must
@@ -63,7 +63,7 @@ module Search_users = struct
   type row = { id : int; email : string }
 
   let name = "SearchUsers"
-  let sql = "SELECT id, email FROM users WHERE email ILIKE $1 LIMIT $2"
+  let sql (_ : params) = "SELECT id, email FROM users WHERE email ILIKE $1 LIMIT $2"
   let encode { pattern; limit } = Sqlml.Value.[ of_string pattern; of_int limit ]
   let decode r = { id = Sqlml.Row.int r 0; email = Sqlml.Row.string r 1 }
   let columns = 2
@@ -75,7 +75,7 @@ module Delete_user = struct
   type params = { id : int }
 
   let name = "DeleteUser"
-  let sql = "DELETE FROM users WHERE id = $1"
+  let sql (_ : params) = "DELETE FROM users WHERE id = $1"
   let encode { id } = [ Sqlml.Value.of_int id ]
   let cardinality = Sqlml.Query.Exec
 end

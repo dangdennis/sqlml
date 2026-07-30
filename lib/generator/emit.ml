@@ -54,7 +54,13 @@ let resolve_column cfg (q : Parse.t) (c : Describe.column) =
            "%s:%d: %s: column %S has Postgres type %S, which sqlml has no mapping for"
            q.Parse.file q.Parse.line q.Parse.name c.Describe.name c.Describe.type_name)
 
+let block_param_names (q : Parse.t) =
+  match q.Parse.dynamic with
+  | None -> []
+  | Some d -> Array.to_list d.Parse.block_params |> List.concat
+
 let resolve_param cfg (q : Parse.t) (p : Describe.param) =
+  let in_block = List.mem p.Describe.pname (block_param_names q) in
   let custom =
     custom_of_config cfg
       ~key:(Some (q.Parse.name ^ "." ^ p.Describe.pname))
@@ -65,7 +71,11 @@ let resolve_param cfg (q : Parse.t) (p : Describe.param) =
       ~elem_type_name:p.Describe.pelem_type_name ~enum_labels:p.Describe.penum_labels
       ~nullable:p.Describe.pnullable ()
   with
-  | Some t -> Ok { fname = p.Describe.pname; ftype = t; ord = 0 }
+  (* a block parameter is optional by construction: Option in the record and
+     an optional argument, but encoded by omission rather than as NULL *)
+  | Some t ->
+      let t = if in_block then Typemap.Option t else t in
+      Ok { fname = p.Describe.pname; ftype = t; ord = 0 }
   | None ->
       Error
         (Printf.sprintf
@@ -295,11 +305,50 @@ let emit_implementation b r =
   end;
   (match r.row_type with Some row -> bprintf b "  type row = %s\n" row | None -> ());
   bprintf b "\n  let name = %S\n" q.Parse.name;
-  bprintf b "  let sql = %S\n\n" q.Parse.sql;
+  (match q.Parse.dynamic with
+  | None -> bprintf b "  let sql (_ : params) = %S\n\n" q.Parse.sql
+  | Some d ->
+      (* one pre-verified SQL text per inclusion combination, indexed by which
+         optional blocks are active *)
+      bprintf b "\n  let variants =\n    [|\n";
+      Array.iter (fun v -> bprintf b "      %S;\n" v) d.Parse.variant_sqls;
+      bprintf b "    |]\n");
+  (match q.Parse.dynamic with
+  | None -> ()
+  | Some d ->
+      bprintf b "\n  let sql (p : params) =\n";
+      Array.iteri
+        (fun k bp ->
+          match bp with
+          | [ one ] ->
+              bprintf b
+                "    let b%d = match p.%s with Some _ -> true | None -> false in\n" k one
+          | many ->
+              let somes = String.concat ", " (List.map (fun _ -> "Some _") many) in
+              let nones = String.concat ", " (List.map (fun _ -> "None") many) in
+              let tuple = String.concat ", " (List.map (fun n -> "p." ^ n) many) in
+              bprintf b
+                "    let b%d =\n\
+                \      match (%s) with\n\
+                \      | %s -> true\n\
+                \      | %s -> false\n\
+                \      | _ -> invalid_arg %S\n\
+                \    in\n"
+                k tuple somes nones
+                (Printf.sprintf "%s: parameters %s must be supplied together" q.Parse.name
+                   (String.concat ", " many)))
+        d.Parse.block_params;
+      let mask =
+        String.concat " lor "
+          (List.init d.Parse.nblocks (fun k ->
+               Printf.sprintf "(if b%d then %d else 0)" k (1 lsl k)))
+      in
+      bprintf b "    variants.(%s)\n\n" mask);
   (* [p.field] rather than a pattern: params and row routinely share field names
      and OCaml would resolve an unannotated pattern to the later type *)
+  let blocks = block_param_names q in
   if r.ps = [] then bprintf b "  let encode () = []\n"
-  else begin
+  else if blocks = [] then begin
     bprintf b "  let encode (p : params) =\n";
     List.iteri
       (fun i f ->
@@ -308,6 +357,21 @@ let emit_implementation b r =
           (Typemap.encoder f.ftype) f.fname)
       r.ps;
     bprintf b "    ]\n"
+  end
+  else begin
+    (* document order, omitting inactive blocks entirely: the chosen variant's
+       $n numbering is the full variant's with absent parameters deleted *)
+    bprintf b "  let encode (p : params) =\n    List.concat\n";
+    List.iteri
+      (fun i f ->
+        let br = if i = 0 then '[' else ';' in
+        if List.mem f.fname blocks then
+          bprintf b "      %c (match p.%s with None -> [] | Some v -> [ %s v ])\n" br
+            f.fname
+            (Typemap.encoder (Typemap.strip_option f.ftype))
+        else bprintf b "      %c [ %s p.%s ]\n" br (Typemap.encoder f.ftype) f.fname)
+      r.ps;
+    bprintf b "      ]\n"
   end;
   (match r.row_type with
   | None -> ()

@@ -106,7 +106,7 @@ module Get_user = struct
   type row = users_row
 
   let name = "GetUser"
-  let sql = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE id = $1"
+  let sql (_ : params) = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE id = $1"
   let encode ({ id } : params) = [ Sqlml.Value.of_uuid id ]
   let decode = decode_user_columns
   let columns = 25
@@ -123,7 +123,7 @@ module Get_user_by_email = struct
   type row = users_row
 
   let name = "GetUserByEmail"
-  let sql = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE email = $1"
+  let sql (_ : params) = "SELECT " ^ user_columns ^ "\nFROM users\nWHERE email = $1"
   let encode ({ email } : params) = [ Sqlml.Value.of_string email ]
   let decode = decode_user_columns
   let columns = 25
@@ -150,7 +150,7 @@ module List_user_summaries = struct
 
   let name = "ListUserSummaries"
 
-  let sql =
+  let sql (_ : params) =
     "SELECT id, email, display_name, status\n\
      FROM users\n\
      WHERE organization_id = $1 AND deleted_at IS NULL\n\
@@ -201,7 +201,7 @@ module Create_user = struct
 
   let name = "CreateUser"
 
-  let sql =
+  let sql (_ : params) =
     "INSERT INTO users\n\
     \  (organization_id, email, display_name, given_name, family_name, locale,\n\
     \   timezone, status, role, phone, marketing_opt_in, metadata)\n\

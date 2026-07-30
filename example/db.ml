@@ -35,7 +35,7 @@ module Get_user = struct
 
   let name = "GetUser"
 
-  let sql =
+  let sql (_ : params) =
     "SELECT id, email, display_name, status, balance, created_at\n\
      FROM users\n\
      WHERE id = $1"
@@ -69,7 +69,7 @@ module Search_users = struct
 
   let name = "SearchUsers"
 
-  let sql =
+  let sql (_ : params) =
     "SELECT id, email, created_at\n\
      FROM users\n\
      WHERE organization_id = $1\n\
@@ -110,7 +110,7 @@ module Count_posts_by_user = struct
 
   let name = "CountPostsByUser"
 
-  let sql =
+  let sql (_ : params) =
     "SELECT\n\
     \  u.email,\n\
     \  p.title,\n\
@@ -141,7 +141,7 @@ module Delete_user = struct
   type params = { id : Uuidm.t }
 
   let name = "DeleteUser"
-  let sql = "DELETE FROM users WHERE id = $1"
+  let sql (_ : params) = "DELETE FROM users WHERE id = $1"
   let encode ({ id } : params) = [ Sqlml.Value.of_uuid id ]
   let cardinality = Sqlml.Query.Exec
 end

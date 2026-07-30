@@ -138,7 +138,7 @@ val fetch_stream : (module Q : Query.MANY) -> conn -> Q.params -> (Q.row -> unit
 And a `:one!` cardinality returning the row directly, erroring when absent,
 since a good half of `:one` call sites immediately unwrap the option.
 
-## 6. Dynamic filters
+## 6. Dynamic filters — done (optional blocks)
 
 The common request the SQL-first model has no clean answer to: "filter by name
 if provided, and by status if provided."

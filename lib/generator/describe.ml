@@ -177,11 +177,8 @@ type raw_col = {
 
 let msg (d : Pq.diag) = d.Pq.message
 
-let describe_one conn (q : Parse.t) ~stmt_name =
-  let fail message =
-    Error { file = q.Parse.file; line = q.Parse.line; qname = q.Parse.name; message }
-  in
-  let pr = Pq.prepare conn stmt_name q.Parse.sql in
+let describe_text conn ~fail ~sql ~nparams ~stmt_name =
+  let pr = Pq.prepare conn stmt_name sql in
   match Pq.check pr with
   | Error e -> fail (msg e)
   | Ok pr -> (
@@ -203,11 +200,77 @@ let describe_one conn (q : Parse.t) ~stmt_name =
                 })
           in
           Pq.clear dr;
-          if List.length params <> List.length q.Parse.params then
+          if List.length params <> nparams then
             fail
               (Printf.sprintf "server inferred %d parameter(s) but the SQL names %d"
-                 (List.length params) (List.length q.Parse.params))
+                 (List.length params) nparams)
           else Ok (params, cols))
+
+let describe_one conn (q : Parse.t) ~stmt_name =
+  let fail message =
+    Error { file = q.Parse.file; line = q.Parse.line; qname = q.Parse.name; message }
+  in
+  describe_text conn ~fail ~sql:q.Parse.sql ~nparams:(List.length q.Parse.params)
+    ~stmt_name
+
+(* Every inclusion combination of a dynamic query is a distinct statement, and
+   each one is verified against the server. The variants must also agree on the
+   result shape -- an optional block that adds a SELECT column would give the
+   same OCaml function different row types depending on its arguments, which is
+   why that is an error rather than a feature. *)
+let check_variants conn (q : Parse.t) ~stmt_base ~full_cols =
+  match q.Parse.dynamic with
+  | None -> Ok ()
+  | Some d ->
+      let fail message =
+        Error { file = q.Parse.file; line = q.Parse.line; qname = q.Parse.name; message }
+      in
+      let shape cols = List.map (fun c -> (c.rname, c.rtype, c.rtable, c.rcol)) cols in
+      let expected = shape full_cols in
+      let n = Array.length d.Parse.variant_sqls in
+      let rec go mask =
+        if mask >= n - 1 then Ok () (* the full variant is the canonical describe *)
+        else
+          let sql = d.Parse.variant_sqls.(mask) in
+          let nparams =
+            (* count $k placeholders by their maximum index *)
+            let m = ref 0 in
+            String.iteri
+              (fun i c ->
+                if c = '$' && i + 1 < String.length sql then
+                  match int_of_string_opt (String.make 1 sql.[i + 1]) with
+                  | Some d0 ->
+                      let j = ref (i + 1) in
+                      let v = ref 0 in
+                      while
+                        !j < String.length sql && sql.[!j] >= '0' && sql.[!j] <= '9'
+                      do
+                        v := (10 * !v) + Char.code sql.[!j] - Char.code '0';
+                        incr j
+                      done;
+                      ignore d0;
+                      if !v > !m then m := !v
+                  | None -> ())
+              sql;
+            !m
+          in
+          match
+            describe_text conn ~fail ~sql ~nparams
+              ~stmt_name:(Printf.sprintf "%s_v%d" stmt_base mask)
+          with
+          | Error e ->
+              Error { e with message = Printf.sprintf "variant %d: %s" mask e.message }
+          | Ok (_, cols) ->
+              if shape cols <> expected then
+                fail
+                  (Printf.sprintf
+                     "optional blocks change the result shape: variant %d returns \
+                      different columns than the full query. Blocks may filter rows, not \
+                      add or remove columns."
+                     mask)
+              else go (mask + 1)
+      in
+      go 0
 
 (* ---------- driver ---------- *)
 

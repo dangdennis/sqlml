@@ -229,6 +229,39 @@ Sqlml.fetch_fold (module Db.Search_users) ~batch:1000 conn
 module directly, so parameters are passed as the record rather than labelled
 arguments. Works through both drivers and inside an enclosing transaction.
 
+## Optional filters
+
+A `/*? ... */` block is included only when its parameter is supplied:
+
+```sql
+-- name: FindUsers :many
+SELECT id, email, status FROM users
+WHERE organization_id = :org
+  /*? AND email ILIKE :email */
+  /*? AND status = :status */
+ORDER BY email
+LIMIT :limit;
+```
+
+```ocaml
+val find_users :
+  Sqlml.conn -> org:Uuidm.t -> limit:int ->
+  ?email:string -> ?status:user_status -> unit ->
+  (find_users_row list, Sqlml.Error.t) result
+```
+
+Every inclusion combination is generated as its own statement and verified
+against the database at codegen, so all of them are type-checked, each plans
+with only its live predicates, and each gets its own prepared-statement cache
+entry. Blocks may appear anywhere in the query — subqueries and CTEs included —
+because each combination is validated whole. Blocks must not change the result
+shape, and at most 4 blocks are allowed per query (2^n combinations are
+verified).
+
+A parameter inside a block must belong to that block alone. A block with
+several parameters is included when all of them are supplied; supplying only
+some raises `Invalid_argument`.
+
 ## Transactions
 
 ```ocaml

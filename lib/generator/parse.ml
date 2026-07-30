@@ -25,6 +25,17 @@ type cardinality = One | One_strict | Many | Exec
    nothing about whether a parameter may be null, so this has to be stated. *)
 type param = { pname : string; index : int; nullable : bool }
 
+(* A query containing /*? ... */ optional blocks. [variant_sqls] holds the
+   assembled, $n-rewritten SQL for every inclusion combination, indexed by
+   bitmask (bit k = block k included); [block_params] names each block's
+   parameters. The query's main [sql]/[params] are the full variant (all
+   blocks included), which is the one that mentions every parameter. *)
+type dyn = {
+  nblocks : int;
+  variant_sqls : string array;
+  block_params : string list array;
+}
+
 type t = {
   name : string; (* GetUser, as written *)
   module_name : string; (* Get_user *)
@@ -32,6 +43,7 @@ type t = {
   doc : string list;
   sql : string; (* with $1 placeholders *)
   params : param list; (* ordered by index *)
+  dynamic : dyn option;
   file : string;
   line : int;
 }
@@ -200,6 +212,138 @@ let rewrite_params ~file ~line sql =
       in
       Ok (Buffer.contents buf, params)
 
+(* ---------- optional blocks ---------- *)
+
+let max_blocks = 4
+
+(* Split raw SQL into fixed text and /*? ... */ optional blocks. *)
+let split_blocks ~file ~line raw =
+  let n = String.length raw in
+  let segs = ref [] in
+  let buf = Buffer.create n in
+  let i = ref 0 in
+  let flush () =
+    if Buffer.length buf > 0 then begin
+      segs := `Fixed (Buffer.contents buf) :: !segs;
+      Buffer.clear buf
+    end
+  in
+  let bad = ref None in
+  while !i < n && !bad = None do
+    if !i + 2 < n && raw.[!i] = '/' && raw.[!i + 1] = '*' && raw.[!i + 2] = '?' then begin
+      let rec find j =
+        if j + 1 >= n then None
+        else if raw.[j] = '*' && raw.[j + 1] = '/' then Some j
+        else find (j + 1)
+      in
+      match find (!i + 3) with
+      | None -> bad := Some "unterminated /*? ... */ block"
+      | Some j ->
+          flush ();
+          segs := `Block (String.trim (String.sub raw (!i + 3) (j - !i - 3))) :: !segs;
+          i := j + 2
+    end
+    else begin
+      Buffer.add_char buf raw.[!i];
+      incr i
+    end
+  done;
+  match !bad with
+  | Some m -> err file line m
+  | None ->
+      flush ();
+      Ok (List.rev !segs)
+
+(* Assemble the variant for [mask] and rewrite its named parameters. A space
+   joins segments so an included block never fuses with surrounding text. *)
+let assemble ~file ~line segs mask =
+  let b = Buffer.create 256 in
+  let k = ref 0 in
+  List.iter
+    (fun seg ->
+      match seg with
+      | `Fixed t -> Buffer.add_string b t
+      | `Block t ->
+          if mask land (1 lsl !k) <> 0 then begin
+            Buffer.add_char b ' ';
+            Buffer.add_string b t;
+            Buffer.add_char b ' '
+          end;
+          incr k)
+    segs;
+  rewrite_params ~file ~line (Buffer.contents b)
+
+let names ps = List.map (fun p -> p.pname) ps
+
+(* Blocks -> variants, with the rules that keep runtime selection sound:
+   every block has at least one parameter; a block's parameters appear in no
+   other block and not in the fixed text; no `?` nullable marker inside a
+   block (a block parameter is already optional). *)
+let build_dynamic ~file ~line segs =
+  let nblocks =
+    List.length (List.filter (function `Block _ -> true | _ -> false) segs)
+  in
+  if nblocks > max_blocks then
+    err file line
+      (Printf.sprintf
+         "%d optional blocks; at most %d are supported (%d variants each need a describe \
+          round-trip)"
+         nblocks max_blocks (1 lsl max_blocks))
+  else begin
+    let nvariants = 1 lsl nblocks in
+    let variants = Array.make nvariants ("", []) in
+    let bad = ref None in
+    (try
+       for mask = 0 to nvariants - 1 do
+         match assemble ~file ~line segs mask with
+         | Ok v -> variants.(mask) <- v
+         | Error e ->
+             bad := Some e;
+             raise Exit
+       done
+     with Exit -> ());
+    match !bad with
+    | Some e -> Error e
+    | None -> (
+        let base_names = names (snd variants.(0)) in
+        let block_params = Array.make nblocks [] in
+        let problem = ref None in
+        for k = 0 to nblocks - 1 do
+          let only_k = names (snd variants.(1 lsl k)) in
+          let bp = List.filter (fun n -> not (List.mem n base_names)) only_k in
+          block_params.(k) <- bp;
+          if bp = [] && !problem = None then
+            problem :=
+              Some
+                (Printf.sprintf "optional block %d has no parameters of its own" (k + 1))
+        done;
+        (* disjointness across blocks *)
+        let all_bp = Array.to_list block_params |> List.concat in
+        if
+          List.length all_bp <> List.length (List.sort_uniq compare all_bp)
+          && !problem = None
+        then problem := Some "a parameter appears in more than one optional block";
+        (* no nullable markers inside blocks *)
+        let full = snd variants.(nvariants - 1) in
+        List.iter
+          (fun p ->
+            if p.nullable && List.mem p.pname all_bp && !problem = None then
+              problem :=
+                Some
+                  (Printf.sprintf
+                     "parameter :%s? is inside an optional block, which already makes it \
+                      optional; drop the ?"
+                     p.pname))
+          full;
+        match !problem with
+        | Some m -> err file line m
+        | None ->
+            Ok
+              ( fst variants.(nvariants - 1),
+                snd variants.(nvariants - 1),
+                { nblocks; variant_sqls = Array.map fst variants; block_params } ))
+  end
+
 (* ---------- headers ---------- *)
 
 let strip s = String.trim s
@@ -287,7 +431,16 @@ let of_string ~file contents =
           if raw_sql = "" then err file line (Printf.sprintf "query %S has no SQL" name)
           else Ok ()
         in
-        let* sql, params = rewrite_params ~file ~line raw_sql in
+        let* segs = split_blocks ~file ~line raw_sql in
+        let has_blocks = List.exists (function `Block _ -> true | _ -> false) segs in
+        let* sql, params, dynamic =
+          if not has_blocks then
+            let* sql, params = rewrite_params ~file ~line raw_sql in
+            Ok (sql, params, None)
+          else
+            let* sql, params, dyn = build_dynamic ~file ~line segs in
+            Ok (sql, params, Some dyn)
+        in
         build
           ({
              name;
@@ -296,6 +449,7 @@ let of_string ~file contents =
              doc;
              sql;
              params;
+             dynamic;
              file;
              line;
            }
