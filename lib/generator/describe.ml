@@ -255,7 +255,13 @@ let describe_all conn (queries : Parse.t list) =
     | q :: tl -> (
         match describe_one conn q ~stmt_name:(Printf.sprintf "sqlml_%d" i) with
         | Error e -> Error e
-        | Ok (params, cols) -> collect ((q, params, cols) :: acc) (i + 1) tl)
+        | Ok (params, cols) -> (
+            match
+              check_variants conn q ~stmt_base:(Printf.sprintf "sqlml_%d" i)
+                ~full_cols:cols
+            with
+            | Error e -> Error e
+            | Ok () -> collect ((q, params, cols) :: acc) (i + 1) tl))
   in
   let* raws = collect [] 0 queries in
   let all_type_oids =
