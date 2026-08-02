@@ -358,8 +358,8 @@ type mappings.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). Next up is structured error codes, so callers can
-tell a unique violation from a deadlock.
+See [ROADMAP.md](ROADMAP.md). Next up: an offline snapshot mode, so `sqlml
+check` can run without a live database, and bulk COPY inserts.
 
 ## Prior art
 

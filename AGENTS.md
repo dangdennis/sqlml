@@ -44,6 +44,7 @@ dune exec bin/main.exe -- generate -q example/sql -o example/generated
 dune exec bin/main.exe -- check -q example/sql -o example/generated
 dune build @fmt                # must be clean; version-pinned ocamlformat
 dune build @doc
+dune build -p sqlml,sqlml-postgresql,sqlml-caqti @install   # release isolation
 ```
 
 All of the above must pass before a commit. CI runs the same set.
@@ -56,7 +57,7 @@ All of the above must pass before a commit. CI runs the same set.
 | `lib/pq/` | Raw libpq binding (C stubs), shared by generator and driver. |
 | `lib/driver_pg/` | libpq driver: statement cache, full error diagnostics. |
 | `lib/driver_caqti/` | Caqti/Eio driver: pooling. |
-| `lib/generator/` | parse → describe → typemap → emit pipeline; config. |
+| `lib/generator/` | parse → describe → typemap → resolve → render pipeline; config. |
 | `bin/` | `sqlml` CLI (cmdliner). |
 | `example/` | Schema, queries, generated output, runnable programs, e2e. |
 | `test/` | Unit tests. |

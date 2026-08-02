@@ -1,4 +1,4 @@
-(lang dune 3.16)
+(lang dune 3.20)
 (name sqlml)
 (generate_opam_files true)
 
@@ -7,6 +7,7 @@
 (maintainers "Dennis Dang")
 (license MIT)
 (documentation "https://github.com/dangdennis/sqlml")
+(maintenance_intent "(latest)")
 
 ; Three packages, so that depending on the runtime does not drag in libpq,
 ; Caqti and Eio. Generated code needs only `sqlml`.
@@ -22,7 +23,6 @@
  \n database client of its own -- add sqlml-postgresql or sqlml-caqti for that.")
  (depends
   (ocaml (>= 5.5.0))
-  (dune (>= 3.16))
   (ptime (>= 1.0.0))
   (uuidm (>= 0.9.8))
   (decimal (>= 1.0.0))
@@ -39,7 +39,6 @@
  \n originating table -- the basis for nullability and shared row types.")
  (depends
   (ocaml (>= 5.5.0))
-  (dune (>= 3.16))
   (sqlml (= :version))
   (cmdliner (>= 1.3.0))
   (otoml (>= 1.0.0))
@@ -54,7 +53,6 @@
  \n unchanged: a query returns a plain result rather than a promise.")
  (depends
   (ocaml (>= 5.5.0))
-  (dune (>= 3.16))
   (sqlml (= :version))
   (caqti (>= 3.0.0))
   (caqti-eio (>= 3.0.0))

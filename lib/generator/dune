@@ -1,4 +1,7 @@
+; Private: the generator is an implementation detail of the `sqlml` binary and
+; the test suite. (package) keeps it buildable under `dune build -p`.
+
 (library
  (name sqlml_gen)
- (public_name sqlml-postgresql.gen)
+ (package sqlml-postgresql)
  (libraries unix otoml pq))

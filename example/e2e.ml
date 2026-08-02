@@ -492,24 +492,48 @@ let test_date_time_interval conn =
       check "negative interval round-trip" false);
   ()
 
+let sections =
+  [
+    ("crud", test_crud);
+    ("transactions", test_transactions);
+    ("arrays", test_arrays);
+    ("sqlstate", test_sqlstate);
+    ("nesting_savepoints", test_nesting_savepoints);
+    ("retry_a_real_serialization_failure", test_retry_a_real_serialization_failure);
+    ("one", test_one);
+    ("streaming", test_streaming);
+    ("statement_cache_vs_rollback", test_statement_cache_vs_rollback);
+    ("optional_blocks", test_optional_blocks);
+    ("date_time_interval", test_date_time_interval);
+  ]
+
+(* Each section runs under a try so one crash still lets the rest report; a
+   section is also runnable alone (--section crud) when chasing a failure. *)
 let () =
+  let only =
+    match Sys.argv with
+    | [| _; "--section"; s |] ->
+        if not (List.mem_assoc s sections) then begin
+          Printf.printf "no section %S; sections are:\n" s;
+          List.iter (fun (n, _) -> Printf.printf "  %s\n" n) sections;
+          exit 2
+        end;
+        Some s
+    | [| _ |] -> None
+    | _ ->
+        prerr_endline "usage: e2e [--section NAME]";
+        exit 2
+  in
   List.iter
     (fun (name, f) ->
-      Printf.printf "-- %s\n" name;
-      f conn)
-    [
-      ("crud", test_crud);
-      ("transactions", test_transactions);
-      ("arrays", test_arrays);
-      ("sqlstate", test_sqlstate);
-      ("nesting_savepoints", test_nesting_savepoints);
-      ("retry_a_real_serialization_failure", test_retry_a_real_serialization_failure);
-      ("one", test_one);
-      ("streaming", test_streaming);
-      ("statement_cache_vs_rollback", test_statement_cache_vs_rollback);
-      ("optional_blocks", test_optional_blocks);
-      ("date_time_interval", test_date_time_interval);
-    ];
+      if only = None || only = Some name then begin
+        Printf.printf "-- %s\n" name;
+        try f conn
+        with e ->
+          Printf.printf "FAIL %s raised %s\n" name (Printexc.to_string e);
+          incr failures
+      end)
+    sections;
   if !failures = 0 then print_endline "all good"
   else begin
     Printf.printf "%d failure(s)\n" !failures;

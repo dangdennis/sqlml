@@ -86,7 +86,7 @@ site to name its driver for no benefit.
 
 ```
 .sql files
-   ↓  generator: discover → parse (-- name: X :one) → PG Parse/Describe → typemap → emit
+   ↓  generator: discover → parse (-- name: X :one) → PG Parse/Describe → resolve → render
 generated query modules  (match Query.ONE / MANY / EXEC)
    ↓  Sqlml.fetch_one (module Q) / fetch_all (module Q) / exec (module Q)
 Driver.S  ←— the backend boundary; Caqti lives strictly below it
@@ -195,7 +195,7 @@ a build:
 ```
 (rule
  (alias runtest)
- (deps (glob_files sql/*.sql) db.ml db.mli)
+ (deps (glob_files_rec sql/*.sql) db.ml db.mli)
  (action (run sqlml check -q sql -o . -m db)))
 ```
 
@@ -280,18 +280,15 @@ different needs.
 
 ## Open decisions
 
-- **Named vs positional params.** sqlc uses `:id`; Postgres wants `$1`. The
-  parser will rewrite `:name` → `$n` and use the names for the `params` record
-  fields. Not yet implemented.
-- **Nullability.** Parse/Describe gives types but not nullability. sqlc infers
-  it from the schema; Squirrel uses `EXPLAIN` + `pg_attribute` plus `!`/`?`
-  column suffixes. Undecided — likely start with `?`/`!` overrides.
-- **Eio.** `caqti-eio` is still labelled experimental upstream. The runtime is
-  synchronous today and has no IO opinion; direct-style Eio would enter only in
-  the driver.
-- **SQLite.** `Driver.placeholder` exists to abstract `$1` vs `?`, but SQLite
-  has no Parse/Describe equivalent, so type inference there needs a different
-  strategy than Postgres.
+- **SQLite.** The runtime is engine-neutral, but the generator's type inference
+  is PostgreSQL's Parse/Describe; SQLite has no equivalent, so inference there
+  needs a different strategy (its own describe over `sqlite3_column_decltype`
+  plus the schema, most likely).
+
+Decided since this section was first written: named parameters are rewritten to
+`$n` by the parser and become the `params` record fields; nullability comes
+from `pg_attribute.attnotnull` with `!`/`?` alias overrides; and Eio entered
+through the Caqti driver only — the runtime stays synchronous and IO-free.
 
 ## Arrays
 

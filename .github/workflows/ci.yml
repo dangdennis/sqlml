@@ -5,9 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+# A superseded push should not keep burning a runner.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -40,6 +46,7 @@ jobs:
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: "5.5.0"
+          dune-cache: true
 
       - name: Install dependencies
         run: |
@@ -51,6 +58,12 @@ jobs:
 
       - name: Build
         run: opam exec -- dune build
+
+      # Release isolation: only the three packages are visible, so a dependency
+      # on anything unattached (example/, test-only libs) fails here, not on an
+      # opam consumer's machine.
+      - name: Packages build in isolation
+        run: opam exec -- dune build -p sqlml,sqlml-postgresql,sqlml-caqti @install
 
       - name: Unit tests (no database)
         run: opam exec -- dune test

@@ -10,7 +10,11 @@ open Db
 
 let ( let* ) = Result.bind
 let failures = ref 0
-let org = Option.get (Uuidm.of_string "6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+
+(* Constants are web-owned: e2e.ml and app.ml use different orgs, ids and
+   email domains, so the three programs cannot corrupt each other's data or
+   rosters no matter which order they run in. *)
+let org = Option.get (Uuidm.of_string "0b000000-0000-4000-8000-000000000001")
 let uuid s = Option.get (Uuidm.of_string s)
 
 (* ---------- handlers, as a web app would write them ---------- *)
@@ -29,16 +33,16 @@ let handle_show pool ~id = Sqlml_caqti.Pool.use pool (fun conn -> get_user conn 
 
 let handle_roster pool =
   Sqlml_caqti.Pool.use pool (fun conn ->
-      search_users conn ~organization_id:org ~email_pattern:"%@example.com" ~limit:50)
+      search_users conn ~organization_id:org ~email_pattern:"%@web.example.com" ~limit:50)
 
 (* ---------- driving it ---------- *)
 
 let people =
   [
-    (uuid "1b4e28ba-2fa1-11d2-883f-0016d3cca427", "alice@example.com", "Alice");
-    (uuid "2c5f39cb-3fb2-22e3-994f-1127e4dda538", "bob@example.com", "Bob");
-    (uuid "3d6a4adc-4fc3-33f4-aa5f-2238f5eee649", "carol@example.com", "Carol");
-    (uuid "4e7b5bed-5fd4-44f5-bb6f-3349f6fff75a", "dave@example.com", "Dave");
+    (uuid "0b000000-0000-4000-8000-000000000011", "alice@web.example.com", "Alice");
+    (uuid "0b000000-0000-4000-8000-000000000012", "bob@web.example.com", "Bob");
+    (uuid "0b000000-0000-4000-8000-000000000013", "carol@web.example.com", "Carol");
+    (uuid "0b000000-0000-4000-8000-000000000014", "dave@web.example.com", "Dave");
   ]
 
 let unwrap what = function
@@ -101,7 +105,7 @@ let () =
      usable -- the classic pooling bug is returning it poisoned *)
   let dup = uuid "5f8c6cfe-6fe5-45f6-cc7f-445af7000a6b" in
   (match
-     handle_signup pool ~id:dup ~email:"alice@example.com" ~display_name:"Impostor"
+     handle_signup pool ~id:dup ~email:"alice@web.example.com" ~display_name:"Impostor"
    with
   | Ok _ -> print_endline "duplicate: unexpectedly succeeded"
   | Error e ->
@@ -154,7 +158,7 @@ let () =
            ~batch:2 c
            {
              Search_users.organization_id = org;
-             email_pattern = "%@example.com";
+             email_pattern = "%@web.example.com";
              limit = 100;
            }
            ~init:0

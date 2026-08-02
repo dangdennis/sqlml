@@ -70,17 +70,16 @@ How the neighbours handle it:
   No sharing, so no collisions — and no way to write a function that works
   across two queries returning the same table.
 
-We chose sharing deliberately, so we inherit sqlc's problem and should take its
-escape hatch. Proposed, a `sqlml.toml` beside the queries directory:
+We chose sharing deliberately, so we inherit sqlc's problem and take its
+escape hatch: a `sqlml.toml` beside the queries directory.
 
 ```toml
 [rename]
 users = "user"              # users_row -> user_row
 "users.display_name" = "name"
-
-[types]
-"users.email" = "Email.t"   # see 3
 ```
+
+(Custom OCaml types for columns are separate — see 3.)
 
 Deliberately not singularizing automatically. English pluralization is a swamp
 (`data`, `series`, `status`, `people`), and sqlc users hit it constantly. An
@@ -93,9 +92,15 @@ is `Uuidm.t` and an email is `string`; there is no way to say a column is a
 `User_id.t` or an `Email.t`.
 
 ```toml
-[types]
-"users.id" = { ocaml = "User_id.t", of_string = "User_id.of_string", to_string = "User_id.to_string" }
-uuid       = { ocaml = "Id.t", of_string = "Id.of_string", to_string = "Id.to_string" }
+[types."users.id"]
+ocaml = "User_id.t"
+of_string = "User_id.of_string"
+to_string = "User_id.to_string"
+
+[types.uuid]
+ocaml = "Id.t"
+of_string = "Id.of_string"
+to_string = "Id.to_string"
 ```
 
 Per-column overrides win over per-type. The generator splices the named
@@ -143,26 +148,31 @@ since a good half of `:one` call sites immediately unwrap the option.
 The common request the SQL-first model has no clean answer to: "filter by name
 if provided, and by status if provided."
 
-What exists today:
+What shipped is the generated-variants option, spelled as optional blocks:
 
 ```sql
-WHERE (:email IS NULL OR email = :email)
+-- name: FindUsers :many
+SELECT id, email, status, balance
+FROM users
+WHERE organization_id = :org
+  /*? AND email ILIKE :email */
+  /*? AND status = :status */
+ORDER BY email
+LIMIT :limit;
 ```
 
-Correct, and plans badly — PostgreSQL cannot use an index on a predicate it
-cannot see through.
+Each block's parameters become optional labelled arguments; passing one
+includes its block. Every inclusion combination is rewritten at codegen and
+verified against Postgres with Describe, so the planner sees plain predicates
+it can index, and the runtime never assembles a SQL string the generator has
+not checked. The combinatorics are capped (4 blocks, 16 variants), all
+variants must agree on the result shape, and block parameters cannot also be
+nullable.
 
-Options, none obviously right:
-
-- **Typed fragments.** Generate a filter value per column; the query declares
-  where they splice. Composable, but it is a query builder in disguise and the
-  types get involved.
-- **Generated variants.** Emit one query per combination of optional filters.
-  Fast and exact; combinatorial past three filters.
-- **Leave it.** Say plainly that dynamic filtering is out of scope and point at
-  hand-written Caqti for those few queries.
-
-sqlc has not solved this either. Worth designing before building.
+Rejected along the way: `(:email IS NULL OR email = :email)` — correct, but
+PostgreSQL cannot use an index on a predicate it cannot see through — and
+typed fragments, which are a query builder in disguise. The variant cap is
+what keeps the combinatorial approach honest.
 
 ## Not planned
 

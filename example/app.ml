@@ -6,7 +6,9 @@
 open Generated
 open Db
 
-let org = Option.get (Uuidm.of_string "6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+(* App-owned constants; e2e.ml and web.ml use different orgs, ids and email
+   domains so the programs stay independent. *)
+let org = Option.get (Uuidm.of_string "0a000000-0000-4000-8000-000000000001")
 let ( let* ) = Result.bind
 let failures = ref 0
 
@@ -42,7 +44,7 @@ let describe conn ~id =
 
 let roster conn =
   match
-    search_users conn ~organization_id:org ~email_pattern:"%@example.com" ~limit:50
+    search_users conn ~organization_id:org ~email_pattern:"%@app.example.com" ~limit:50
   with
   | Error e -> Printf.sprintf "roster unavailable: %s" (fail_with e)
   | Ok [] -> "roster: nobody yet"
@@ -52,8 +54,8 @@ let roster conn =
 
 (* ---------- driving it ---------- *)
 
-let alice = Option.get (Uuidm.of_string "1b4e28ba-2fa1-11d2-883f-0016d3cca427")
-let bob = Option.get (Uuidm.of_string "2c5f39cb-3fb2-22e3-994f-1127e4dda538")
+let alice = Option.get (Uuidm.of_string "0a000000-0000-4000-8000-000000000011")
+let bob = Option.get (Uuidm.of_string "0a000000-0000-4000-8000-000000000012")
 let ghost = Option.get (Uuidm.of_string "00000000-0000-4000-8000-000000000000")
 
 let () =
@@ -66,18 +68,20 @@ let () =
   in
   List.iter (fun id -> ignore (delete_user_exn conn ~id)) [ alice; bob ];
 
-  (match signup conn ~id:alice ~email:"alice@example.com" ~display_name:"Alice" with
+  (match signup conn ~id:alice ~email:"alice@app.example.com" ~display_name:"Alice" with
   | Ok (Some u) -> Printf.printf "signed up : %s\n" u.email
   | Ok None -> print_endline "signed up : vanished?"
   | Error e -> Printf.printf "signup failed: %s\n" (fail_with e));
 
-  (match signup conn ~id:bob ~email:"bob@example.com" ~display_name:"Bob" with
-  | Ok _ -> print_endline "signed up : bob@example.com"
+  (match signup conn ~id:bob ~email:"bob@app.example.com" ~display_name:"Bob" with
+  | Ok _ -> print_endline "signed up : bob@app.example.com"
   | Error e -> Printf.printf "signup failed: %s\n" (fail_with e));
 
   (* a duplicate email violates the unique index -> the whole transaction rolls
      back, and the error arrives as a value rather than an exception *)
-  (match signup conn ~id:ghost ~email:"alice@example.com" ~display_name:"Impostor" with
+  (match
+     signup conn ~id:ghost ~email:"alice@app.example.com" ~display_name:"Impostor"
+   with
   | Ok _ -> print_endline "duplicate  : unexpectedly succeeded"
   | Error _ ->
       Printf.printf "duplicate  : rejected, and rolled back (ghost exists? %b)\n"
