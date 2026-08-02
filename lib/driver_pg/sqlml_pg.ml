@@ -2,9 +2,8 @@
 
    Implements Sqlml.Driver.S over libpq. Nothing above Driver.S knows this
    exists -- generated code takes a [Sqlml.conn] and never names a backend --
-   so a Caqti-backed driver (for pooling, and for SQLite) can be added later as
-   a second implementation of the same signature without touching a line of
-   generated or application code.
+   which is why sqlml_caqti can implement the same signature (pooling, Eio)
+   without touching a line of generated or application code.
 
    Everything moves in Postgres text format. Values come back as [Value.Text]
    or [Value.Null] and are parsed by [Sqlml.Row], which is why those decoders

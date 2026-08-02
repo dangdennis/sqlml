@@ -1,25 +1,4 @@
-(** Optional [sqlml.toml], read from the queries directory.
-
-    Two things it controls, both of which have to be stated rather than guessed: what
-    generated names are called, and which OCaml type a column maps to.
-
-    {[
-      # Rename generated types and fields.
-      [rename]
-      users = "user"                    # users_row becomes user_row
-      "users.display_name" = "name"     # the field becomes `name`
-
-      # Map a column, or a whole Postgres type, to your own OCaml type.
-      [types."users.id"]
-      ocaml = "User_id.t"
-      of_string = "User_id.of_string"
-      to_string = "User_id.to_string"
-
-      [types.citext]
-      ocaml = "Email.t"
-      of_string = "Email.of_string"
-      to_string = "Email.to_string"
-    ]} *)
+(* See config.mli; the accepted file format is documented in the README. *)
 
 type custom = { ocaml : string; of_string : string; to_string : string }
 
@@ -32,11 +11,10 @@ type t = {
 
 let empty = { rename = []; customs = [] }
 let filename = "sqlml.toml"
-let err fmt = Diag.error fmt
 
-let rec fold_result f acc = function
-  | [] -> Ok acc
-  | x :: tl -> ( match f acc x with Ok acc -> fold_result f acc tl | Error _ as e -> e)
+open Gen_util
+
+let err fmt = Diag.error fmt
 
 let parse_custom toml key =
   let get f = Otoml.find_opt toml Otoml.get_string [ "types"; key; f ] in

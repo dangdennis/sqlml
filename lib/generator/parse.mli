@@ -7,7 +7,7 @@
 
     The records are [private]: fields are readable everywhere, but the parser is the only
     constructor, so a [t] in hand always satisfies the invariants ([params] sorted by
-    index, at most {!max_blocks} blocks, block parameters disjoint and never nullable,
+    index, a bounded block count, block parameters disjoint and never nullable,
     [2^nblocks] variants). *)
 
 type cardinality = One | One_strict | Many | Exec
@@ -34,9 +34,7 @@ type t = private {
   line : int;
 }
 
-val max_blocks : int
 val of_string : file:string -> string -> (t list, Diag.t) result
 val of_file : string -> (t list, Diag.t) result
 val to_snake : string -> string
-val to_module_name : string -> string
 val string_of_cardinality : cardinality -> string

@@ -15,7 +15,6 @@ type resolved = private {
   d : Describe.described;
   row_type : string option;  (** [None] for [:exec] *)
   row_origin : origin option;
-  shared : bool;
   cols : field list;  (** SELECT order — decoders index by position *)
   type_fields : field list;  (** order the record type is declared in *)
   ps : field list;

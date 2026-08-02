@@ -1,14 +1,6 @@
-(** Asking PostgreSQL what a query's types are.
-
-    For each parsed query we PQprepare it (nParams = 0, so the server infers parameter
-    types -- the inference is the answer we want) and then PQdescribePrepared. That
-    yields, without executing anything:
-
-    - parameter type OIDs
-    - per result column: name, type OID, and crucially the originating table OID + column
-      number, or 0/0 when the column is an expression
-
-    Everything else is catalog lookups over those OIDs. *)
+(* See describe.mli. PQprepare uses nParams = 0 so the server infers parameter
+   types -- the inference is the answer we want -- and PQdescribePrepared
+   executes nothing. *)
 
 type override =
   | No_override
@@ -17,7 +9,6 @@ type override =
 
 type column = {
   name : string; (* alias with any !/? stripped *)
-  type_oid : int;
   type_name : string;
   elem_type_name : string option (* Some when the type is an array *);
   table : string option; (* relname, when the column comes from a table *)
@@ -30,7 +21,6 @@ type column = {
 type param = {
   index : int;
   pname : string;
-  ptype_oid : int;
   ptype_name : string;
   pelem_type_name : string option;
   penum_labels : string list;
@@ -311,7 +301,6 @@ let describe_all conn (queries : Parse.t list) =
                in
                {
                  name = c.rname;
-                 type_oid = c.rtype;
                  type_name = type_name c.rtype;
                  elem_type_name = elem_name c.rtype;
                  table = Option.map fst (List.assoc_opt c.rtable tinfo);
@@ -353,7 +342,6 @@ let describe_all conn (queries : Parse.t list) =
                    (match decl with
                    | Some p -> p.Parse.pname
                    | None -> Printf.sprintf "arg%d" (i + 1));
-                 ptype_oid = oid;
                  ptype_name = type_name oid;
                  pelem_type_name = elem_name oid;
                  penum_labels = labels oid;
@@ -396,23 +384,12 @@ let report d =
 (* Explicit constructors: the records are private so pipeline code cannot
    fabricate them, but two legitimate producers exist besides the server --
    tests, and the offline snapshot cache, which deserializes exactly these. *)
-let v_column ~name ~type_oid ~type_name ~elem_type_name ~table ~table_oid ~table_col
-    ~nullable ~enum_labels =
-  {
-    name;
-    type_oid;
-    type_name;
-    elem_type_name;
-    table;
-    table_oid;
-    table_col;
-    nullable;
-    enum_labels;
-  }
+let v_column ~name ~type_name ~elem_type_name ~table ~table_oid ~table_col ~nullable
+    ~enum_labels =
+  { name; type_name; elem_type_name; table; table_oid; table_col; nullable; enum_labels }
 
-let v_param ~index ~pname ~ptype_oid ~ptype_name ~pelem_type_name ~penum_labels ~pnullable
-    =
-  { index; pname; ptype_oid; ptype_name; pelem_type_name; penum_labels; pnullable }
+let v_param ~index ~pname ~ptype_name ~pelem_type_name ~penum_labels ~pnullable =
+  { index; pname; ptype_name; pelem_type_name; penum_labels; pnullable }
 
 let v_described ~query ~params ~columns ~model_table =
   { query; params; columns; model_table }

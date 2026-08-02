@@ -1,8 +1,4 @@
-(** The one error type of the generator pipeline.
-
-    Parse, describe, emit and the driver code all report failures as a [t], so every
-    message a user sees carries the same [file:line: Query: message] shape, and improving
-    diagnostics means editing one printer. *)
+(* See diag.mli. *)
 
 type t = {
   file : string option;

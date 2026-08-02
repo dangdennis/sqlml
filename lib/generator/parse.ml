@@ -1,25 +1,12 @@
-(** Parsing .sql files into named queries.
+(* See parse.mli for the authoring model. One design note lives here:
+   nullability overrides are deliberately NOT handled by the parser. They ride
+   to Postgres inside a quoted column alias --
 
-    Authoring model is sqlc's: many queries per file, each introduced by a header comment
-    carrying a name and a cardinality.
+     SELECT coalesce(total, 0) AS "total!"
 
-    {[
-      -- name: GetUser :one
-      -- Fetches a single user by id.
-      SELECT id, email, display_name FROM users WHERE id = :id;
-    ]}
-
-    Named parameters (:id) are rewritten to positional ($1) before the query is sent to
-    Postgres, and the names become the fields of the generated params record.
-
-    Nullability overrides are deliberately NOT handled here. They ride to Postgres inside
-    a quoted column alias --
-
-    SELECT coalesce(total, 0) AS "total!"
-
-    -- so Postgres echoes the marker back in RowDescription and [Describe] strips it. That
-    means we never rewrite the user's SELECT list, and a marker can never be confused with
-    SQL syntax. *)
+   -- so Postgres echoes the marker back in RowDescription and [Describe]
+   strips it. That means we never rewrite the user's SELECT list, and a marker
+   can never be confused with SQL syntax. *)
 
 type cardinality = One | One_strict | Many | Exec
 

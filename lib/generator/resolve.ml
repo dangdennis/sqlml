@@ -1,10 +1,6 @@
-(** Semantic analysis: what to generate.
-
-    Turns described queries into [resolved] values with every decision made -- OCaml types
-    chosen against the config, field and row-type names fixed, collisions rejected,
-    optional-block parameters attributed. [Render] then only prints. Keeping the phases
-    apart means naming and collision logic can be tested without ever rendering, and the
-    renderer stays boring. *)
+(* See resolve.mli. Naming and collision logic lives here, apart from
+   [Render], so it can be tested without ever rendering and the renderer stays
+   boring. *)
 
 open Gen_util
 
@@ -106,7 +102,6 @@ type resolved = {
   d : Describe.described;
   row_type : string option (* None for :exec *);
   row_origin : origin option;
-  shared : bool;
   cols : field list (* SELECT order -- decoders index by position *);
   type_fields : field list (* order the record type is declared in *);
   ps : field list;
@@ -138,7 +133,7 @@ let resolve cfg (d : Describe.described) =
   let type_fields =
     if shared then List.stable_sort (fun a b -> compare a.ord b.ord) cols else cols
   in
-  Ok { d; row_type; row_origin; shared; cols; type_fields; ps }
+  Ok { d; row_type; row_origin; cols; type_fields; ps }
 
 (* ---------- collecting shared pieces ---------- *)
 

@@ -21,12 +21,12 @@ let parse1 src =
 
 let col ?(table = None) ?(table_oid = 0) ?(table_col = 0) ?(nullable = false)
     ?(labels = []) ?(elem = None) name type_name =
-  Describe.v_column ~name ~type_oid:0 ~type_name ~elem_type_name:elem ~table ~table_oid
-    ~table_col ~nullable ~enum_labels:labels
+  Describe.v_column ~name ~type_name ~elem_type_name:elem ~table ~table_oid ~table_col
+    ~nullable ~enum_labels:labels
 
 let param ?(nullable = false) ?(labels = []) index pname ptype_name =
-  Describe.v_param ~index ~pname ~ptype_oid:0 ~ptype_name ~pelem_type_name:None
-    ~penum_labels:labels ~pnullable:nullable
+  Describe.v_param ~index ~pname ~ptype_name ~pelem_type_name:None ~penum_labels:labels
+    ~pnullable:nullable
 
 let described ?(model = None) src ~params ~columns =
   Describe.v_described ~query:(parse1 src) ~params ~columns ~model_table:model

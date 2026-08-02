@@ -1,13 +1,4 @@
-(** PostgreSQL [interval] values.
-
-    An interval is three independent fields — months, days, microseconds — which cannot be
-    collapsed into one duration: a month has no fixed length, and a day is not always 24
-    hours across DST. So this is the honest record, not a seconds count.
-
-    Parsing accepts what PostgreSQL prints in its [postgres] (default),
-    [postgres_verbose], [sql_standard] and [iso_8601] interval styles. Printing emits an
-    unambiguous unit-spelled form PostgreSQL accepts regardless of style, mirroring how
-    timestamps are handled. *)
+(* See interval.mli for the interface story. *)
 
 type t = { months : int; days : int; micros : int64 }
 

@@ -1,19 +1,4 @@
-(** Positional row decoders used by generated code.
-
-    Generated decoders read like the SELECT list they came from:
-
-    {[
-    let decode r =
-      {
-        id = Row.int r 0;
-        email = Row.string r 1;
-        created_at = Row.ptime r 2;
-        display_name = Row.(option string) r 3;
-      }
-    ]}
-
-    Decoders raise [Bad] rather than returning a result so generated code stays flat;
-    [Exec] catches it and turns it into [Error.Decode]. *)
+(* See row.mli for the interface story. *)
 
 type t = Value.t array
 

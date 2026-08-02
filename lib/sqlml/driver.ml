@@ -1,13 +1,8 @@
-(** The backend boundary.
-
-    Everything above this line is backend-neutral; everything below is a driver
-    (sqlml_caqti today, a native wire driver later). Generated code never names a driver
-    -- it receives a [Driver.t], which packs the driver away existentially.
-
-    Note the asymmetry with query dispatch: the *driver* is existential (a plain GADT +
-    first-class module, so a connection is an ordinary value you can store in a record or
-    pass around), while the *query* is a modular explicit, so its params/row types can
-    appear in the execution function's type. *)
+(* See driver.mli for the boundary story. One note lives here: the asymmetry
+   with query dispatch. The *driver* is existential (a plain GADT + first-class
+   module, so a connection is an ordinary value you can store or pass around),
+   while the *query* is a modular explicit, so its params/row types can appear
+   in the execution function's type. *)
 
 (* What a driver reports when a statement fails. [sqlstate] is absent for
    client-side failures (a dropped socket, a malformed URI) where the server

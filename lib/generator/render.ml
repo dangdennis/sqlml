@@ -1,6 +1,5 @@
-(** Rendering: printing a [Resolve.resolved] as OCaml source.
-
-    No decisions are made here; anything that requires judgement belongs in [Resolve]. *)
+(* See render.mli. No decisions are made here; anything requiring judgement
+   belongs in [Resolve]. *)
 
 open Resolve
 

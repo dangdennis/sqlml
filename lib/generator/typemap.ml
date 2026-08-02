@@ -1,5 +1,4 @@
-(** PostgreSQL type to OCaml type, plus the decoder and encoder expressions the emitter
-    splices into generated code. *)
+(* See typemap.mli. *)
 
 type custom = { c_ocaml : string; c_of_string : string; c_to_string : string }
 

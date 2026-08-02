@@ -31,22 +31,10 @@ module Query = Query
 module Sqlstate = Sqlstate
 module Interval = Interval
 
-(* A connection handle.
-
-   This is deliberately NOT parameterised by a phantom region tag. The intent
-   was for [transaction] to hand back a distinct [tx conn] so that a nested
-   transaction became a type error. It cannot be done here: the tag does not
-   generalise through the modular-explicit query functions, and a binding whose
-   type contains a modular-explicit arrow cannot carry an explicit polymorphic
-   annotation at all -- both ['k.] and [type k.] are rejected with "the
-   universal variable would escape its scope" -- so there is no way to force it.
-
-   The bug the tag was meant to prevent is using an outer handle inside a
-   transaction body and silently running on a different connection. That is only
-   reachable once pooling exists, and the fix there does not need phantom types:
-   make the pool a distinct type carrying no query operations, so that obtaining
-   a connection at all requires going through [transaction] or
-   [with_connection]. *)
+(* A connection handle. Deliberately NOT parameterised by a phantom region
+   tag: the tag cannot generalise through the modular-explicit query
+   functions. Full postmortem in DESIGN.md, "Transactions, and the phantom tag
+   that died twice". *)
 type conn = Driver.t
 
 (* Generated code emits a raising wrapper and a [_res] wrapper per query:

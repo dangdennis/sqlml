@@ -3,15 +3,15 @@
     Each query is PQprepared (letting the server infer parameter types — the inference
     {e is} the answer) and PQdescribed, yielding parameter type OIDs and, per result
     column, the name, type OID and originating table column. Everything else is catalog
-    lookups over those OIDs. Every variant of a dynamic query is verified, and all
-    variants must agree on the result shape.
+    lookups over those OIDs; the records carry only resolved names and labels, never OIDs,
+    so they are stable across databases. Every variant of a dynamic query is verified, and
+    all variants must agree on the result shape.
 
     Records are [private]: readable everywhere, constructed only here, so a [described] in
     hand reflects what the server actually said. *)
 
 type column = private {
   name : string;  (** alias with any [!]/[?] override stripped *)
-  type_oid : int;
   type_name : string;
   elem_type_name : string option;  (** [Some] when the type is an array *)
   table : string option;  (** relname, when the column comes from a table *)
@@ -24,7 +24,6 @@ type column = private {
 type param = private {
   index : int;
   pname : string;
-  ptype_oid : int;
   ptype_name : string;
   pelem_type_name : string option;
   penum_labels : string list;
@@ -55,7 +54,6 @@ val report : described -> string
 
 val v_column :
   name:string ->
-  type_oid:int ->
   type_name:string ->
   elem_type_name:string option ->
   table:string option ->
@@ -68,7 +66,6 @@ val v_column :
 val v_param :
   index:int ->
   pname:string ->
-  ptype_oid:int ->
   ptype_name:string ->
   pelem_type_name:string option ->
   penum_labels:string list ->

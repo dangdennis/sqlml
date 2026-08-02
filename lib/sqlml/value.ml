@@ -1,8 +1,4 @@
-(** The wire-neutral value type exchanged with drivers.
-
-    Deliberately small. Richer Postgres types (uuid, timestamptz, json, arrays, enums) are
-    carried as [Text] or [Octets] and converted by generated code via [Row], so that
-    adding a type mapping never requires a driver change. *)
+(* See value.mli for the interface story. *)
 
 type t =
   | Null

@@ -1,14 +1,4 @@
-(** What a generated query module looks like from the runtime's point of view.
-
-    One module per named query in a .sql file. *)
-
-(* Cardinality witnesses.
-
-   Without these, ONE and MANY are structurally identical module types and EXEC
-   is a subset of both, so [fetch_all (module Get_user)] and [exec (module Get_user)] both
-   typecheck against a query declared :one -- the annotation in the .sql file
-   would be a comment rather than a constraint. Requiring a differently-typed
-   witness value in each signature is what makes the cardinality real. *)
+(* See query.mli for why the cardinality witnesses exist. *)
 
 (* pure phantom tags; the mli keeps them abstract *)
 type one = |
