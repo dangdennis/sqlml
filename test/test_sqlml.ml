@@ -16,8 +16,6 @@ module Fake = struct
     rows : Sqlml.Value.t array list;
   }
 
-  let name = "fake"
-  let placeholder n = "$" ^ string_of_int n
   let close _ = ()
 
   let query c ~sql ~params ~columns:_ =

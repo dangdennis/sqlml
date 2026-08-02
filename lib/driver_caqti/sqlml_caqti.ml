@@ -105,9 +105,7 @@ let query_of_sql sql =
 module Raw = struct
   type conn = (module Caqti_eio.CONNECTION)
 
-  let name = "caqti-eio/postgresql"
   let close (module Db : Caqti_eio.CONNECTION) = Db.disconnect ()
-  let placeholder n = "$" ^ string_of_int n
 
   let query (module Db : Caqti_eio.CONNECTION) ~sql ~params ~columns =
     let (Arg (at, mk)) = arg_type (List.length params) in

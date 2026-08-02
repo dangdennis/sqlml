@@ -14,9 +14,7 @@ module Raw = struct
   type prep = Prepared of string | Unpreparable
   type conn = { raw : Pq.conn; stmts : (string, prep) Hashtbl.t; mutable counter : int }
 
-  let name = "postgresql"
   let close conn = Pq.finish conn.raw
-  let placeholder n = "$" ^ string_of_int n
 
   (* peek at a result's failure state without consuming it *)
   let stale_statement r =

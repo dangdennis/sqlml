@@ -10,10 +10,11 @@
    would be a comment rather than a constraint. Requiring a differently-typed
    witness value in each signature is what makes the cardinality real. *)
 
-type one = One_tag
-type one_strict = One_strict_tag
-type many = Many_tag
-type exec = Exec_tag
+(* pure phantom tags; the mli keeps them abstract *)
+type one = |
+type one_strict = |
+type many = |
+type exec = |
 
 type _ card =
   | One : one card

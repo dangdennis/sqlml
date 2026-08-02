@@ -21,8 +21,6 @@ let ts = Sqlml.Value.Text "2026-07-28 09:00:00+00"
 module Stub = struct
   type conn = { mutable last_params : Sqlml.Value.t list }
 
-  let name = "stub"
-  let placeholder n = "$" ^ string_of_int n
   let close _ = ()
 
   let query c ~sql ~params ~columns:_ =

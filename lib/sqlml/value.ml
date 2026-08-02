@@ -89,13 +89,13 @@ module Print = struct
   let int = string_of_int
   let float f = Printf.sprintf "%.17g" f
   let bool b = if b then "t" else "f"
-  let uuid = Uuidm.to_string
-  let decimal = Decimal.to_string
+  let uuid u = Uuidm.to_string u
+  let decimal d = Decimal.to_string d
   let ptime t = Ptime.to_rfc3339 ~tz_offset_s:0 t
-  let json = Yojson.Safe.to_string
+  let json j = Yojson.Safe.to_string j
   let date (y, m, d) = Printf.sprintf "%04d-%02d-%02d" y m d
   let time_of_day span = match of_time_of_day span with Text s -> s | _ -> assert false
-  let interval = Interval.to_string
+  let interval i = Interval.to_string i
 end
 
 (* [of_list print xs] encodes an array column or parameter. *)

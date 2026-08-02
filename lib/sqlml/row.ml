@@ -203,10 +203,10 @@ module Elem = struct
     | Ok (t, _, _) -> t
     | Error _ -> failwith "timestamp"
 
-  let json = Yojson.Safe.from_string
-  let date = parse_date
-  let time_of_day = parse_time_of_day
-  let interval = Interval.of_string
+  let json s = Yojson.Safe.from_string s
+  let date s = parse_date s
+  let time_of_day s = parse_time_of_day s
+  let interval s = Interval.of_string s
 end
 
 let parse_array_literal ~column s =

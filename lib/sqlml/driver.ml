@@ -28,11 +28,6 @@ let error ?sqlstate ?detail ?hint ?constraint_name ?table_name ?column_name mess
 module type S = sig
   type conn
 
-  val name : string
-
-  (* Dialect placeholder for the n-th parameter, 1-indexed: "$1" / "?" *)
-  val placeholder : int -> string
-
   (* [columns] is how many columns the caller expects. Drivers that discover the
      shape from the result (libpq) may ignore it; drivers that must declare it
      up front (Caqti) need it. *)
@@ -63,5 +58,3 @@ type t = Conn : (module S with type conn = 'c) * 'c * int ref -> t
 
 let make (type c) (module D : S with type conn = c) (c : c) : t =
   Conn ((module D), c, ref 0)
-
-let name (Conn ((module D), _, _)) = D.name
