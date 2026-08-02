@@ -16,9 +16,11 @@ val sql_files : string -> (string list, Diag.t) result
 val parse_all : string list -> (Parse.t list, Diag.t) result
 val build : queries_dir:string -> conninfo:string -> (built, Diag.t) result
 
-val write : out_dir:string -> module_name:string -> built -> string * string
+val write :
+  out_dir:string -> module_name:string -> built -> (string * string, Diag.t) result
 (** Writes [module_name].mli/.ml, formatted through the project's own ocamlformat; returns
-    the two paths. *)
+    the two paths. Fails when ocamlformat is missing or mismatched — generate and check
+    must format identically, or check would report phantom drift. *)
 
-val check : out_dir:string -> module_name:string -> built -> drift list
+val check : out_dir:string -> module_name:string -> built -> (drift list, Diag.t) result
 val string_of_drift : drift -> string

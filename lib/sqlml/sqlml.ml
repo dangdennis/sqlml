@@ -233,14 +233,15 @@ let transaction ?isolation ?(retry = 0) (conn : conn) f =
    The fold therefore runs inside a transaction, and its effects roll back if
    the fold raises. *)
 
-let cursor_counter = ref 0
-
 let fetch_fold (module Q : Query.MANY) ?(batch = 500) (conn : conn) (p : Q.params)
     ~(init : 'acc) ~(f : 'acc -> Q.row -> 'acc) : ('acc, Error.t) result =
   if batch <= 0 then invalid_arg "Sqlml.fetch_fold: ~batch must be positive";
-  incr cursor_counter;
-  let cur = Printf.sprintf "sqlml_cursor_%d" !cursor_counter in
   transaction conn @@ fun tx ->
+  (* The cursor name is derived from transaction depth, not a global counter:
+     statements on one connection are sequential per depth, so the name set is
+     finite and the libpq statement cache cannot grow one entry per call. *)
+  let (Driver.Conn (_, _, depth)) = tx in
+  let cur = Printf.sprintf "sqlml_cursor_d%d" !depth in
   let declare () =
     match tx with
     | Driver.Conn ((module D), c, _) -> (

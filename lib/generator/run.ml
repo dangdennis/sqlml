@@ -95,31 +95,43 @@ let build ~queries_dir ~conninfo =
    Silently returns the input unchanged when ocamlformat is not installed or
    rejects the file: formatting is a nicety, not a correctness requirement, and
    generate should not fail because a developer tool is missing. *)
-let format ~dir ~ext contents =
-  let base = Filename.concat dir ("sqlml_fmt_" ^ string_of_int (Unix.getpid ())) in
-  let path = base ^ ext in
-  let cleanup () = try Sys.remove path with _ -> () in
-  match
-    let oc = open_out_bin path in
-    output_string oc contents;
-    close_out oc;
-    Sys.command
-      (Printf.sprintf "ocamlformat --inplace %s 2>/dev/null" (Filename.quote path))
-  with
-  | 0 ->
-      let ic = open_in_bin path in
-      let n = in_channel_length ic in
-      let out = really_input_string ic n in
-      close_in ic;
-      cleanup ();
-      out
-  | _ | (exception _) ->
-      cleanup ();
-      contents
+let format ~name contents =
+  let tmp = Filename.temp_file "sqlml_fmt" (Filename.extension name) in
+  let cleanup () = try Sys.remove tmp with _ -> () in
+  Fun.protect ~finally:cleanup (fun () ->
+      let oc = open_out_bin tmp in
+      output_string oc contents;
+      close_out oc;
+      (* --name resolves .ocamlformat from the real output path while the bytes
+         live in the system temp dir, never in the user's source tree *)
+      let rc =
+        Sys.command
+          (Printf.sprintf "ocamlformat --inplace --name %s %s 2>/dev/null"
+             (Filename.quote name) (Filename.quote tmp))
+      in
+      match rc with
+      | 0 ->
+          let ic = open_in_bin tmp in
+          let n = in_channel_length ic in
+          let out = really_input_string ic n in
+          close_in ic;
+          Ok out
+      | 127 ->
+          Diag.error
+            "ocamlformat not found on PATH. generate and check format their output \
+             through the project's pinned ocamlformat (see .ocamlformat); without it the \
+             two could disagree byte-for-byte."
+      | rc ->
+          Diag.error
+            "ocamlformat failed (exit %d) formatting %s -- is the installed version the \
+             one pinned in .ocamlformat?"
+            rc name)
 
-let format_built ~out_dir b =
-  let dir = if Sys.file_exists out_dir then out_dir else Filename.current_dir_name in
-  { b with mli = format ~dir ~ext:".mli" b.mli; ml = format ~dir ~ext:".ml" b.ml }
+let format_built ~out_dir ~module_name b =
+  let base = Filename.concat out_dir module_name in
+  let* mli = format ~name:(base ^ ".mli") b.mli in
+  let* ml = format ~name:(base ^ ".ml") b.ml in
+  Ok { b with mli; ml }
 
 let paths ~out_dir ~module_name =
   let base = Filename.concat out_dir module_name in
@@ -141,11 +153,11 @@ let write_file path contents =
 
 let write ~out_dir ~module_name b =
   if not (Sys.file_exists out_dir) then Unix.mkdir out_dir 0o755;
-  let b = format_built ~out_dir b in
+  let* b = format_built ~out_dir ~module_name b in
   let mli_path, ml_path = paths ~out_dir ~module_name in
   write_file mli_path b.mli;
   write_file ml_path b.ml;
-  (mli_path, ml_path)
+  Ok (mli_path, ml_path)
 
 (* First differing line, so the report points at something actionable rather
    than just saying the files differ. *)
@@ -163,16 +175,19 @@ let first_difference ~path ~expected ~actual =
   | Some (line, expected, actual) -> Some (Differs { path; line; expected; actual })
 
 let check ~out_dir ~module_name b =
-  (* the same formatting generate applies, so the comparison is like-for-like *)
-  let b = format_built ~out_dir b in
-  let mli_path, ml_path = paths ~out_dir ~module_name in
-  List.filter_map
-    (fun (path, expected) ->
-      match read_file path with
-      | None -> Some (Missing path)
-      | Some actual ->
-          if actual = expected then None else first_difference ~path ~expected ~actual)
-    [ (mli_path, b.mli); (ml_path, b.ml) ]
+  (* the same formatting generate applies, so the comparison is like-for-like;
+     a formatting failure is an error, not drift -- reporting it as drift sent
+     users chasing a schema change that did not exist *)
+  let* b = format_built ~out_dir ~module_name b in
+  Ok
+    (List.filter_map
+       (fun (path, expected) ->
+         match read_file path with
+         | None -> Some (Missing path)
+         | Some actual ->
+             if actual = expected then None else first_difference ~path ~expected ~actual)
+       (let mli_path, ml_path = paths ~out_dir ~module_name in
+        [ (mli_path, b.mli); (ml_path, b.ml) ]))
 
 let string_of_drift = function
   | Missing path -> Printf.sprintf "%s: missing -- has `sqlml generate` ever run?" path

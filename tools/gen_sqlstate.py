@@ -3,7 +3,7 @@
 
     curl -O https://raw.githubusercontent.com/postgres/postgres/master/src/backend/utils/errcodes.txt
     python3 tools/gen_sqlstate.py errcodes.txt
-    dune build @fmt && dune promote
+    dune build @fmt; dune promote   # @fmt exits nonzero on the diff; promote anyway
 
 Constructors derive from the ERRCODE_ macro names, not the condition names:
 PostgreSQL reuses five condition names across classes (string_data_right_truncation

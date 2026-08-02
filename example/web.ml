@@ -9,6 +9,7 @@ open Generated
 open Db
 
 let ( let* ) = Result.bind
+let failures = ref 0
 let org = Option.get (Uuidm.of_string "6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 let uuid s = Option.get (Uuidm.of_string s)
 
@@ -44,6 +45,7 @@ let unwrap what = function
   | Ok v -> v
   | Error e ->
       Printf.printf "%s: %s\n" what (Sqlml.Error.to_string e);
+      incr failures;
       exit 1
 
 let () =
@@ -62,24 +64,6 @@ let () =
   Printf.printf "pool     : up (max 4 connections)\n";
 
   (* clean slate *)
-  (* streaming through the Caqti driver: DECLARE/FETCH ride the same Driver.S
-     operations, so the pool needs nothing special *)
-  (match
-     Sqlml_caqti.Pool.use pool (fun c ->
-         Sqlml.fetch_fold
-           (module Search_users)
-           ~batch:2 c
-           {
-             Search_users.organization_id = org;
-             email_pattern = "%@example.com";
-             limit = 100;
-           }
-           ~init:0
-           ~f:(fun n _ -> n + 1))
-   with
-  | Ok n -> Printf.printf "stream   : %d row(s) in batches of 2\n" n
-  | Error e -> Printf.printf "stream   : %s\n" (Sqlml.Error.to_string e));
-
   List.iter
     (fun (id, _, _) -> ignore (Sqlml_caqti.Pool.use pool (fun c -> delete_user c ~id)))
     people;
@@ -93,6 +77,7 @@ let () =
          | Ok (Some u) -> Printf.printf "signup   : %s\n" u.email
          | Ok None -> Printf.printf "signup   : %s vanished\n" email
          | Error e ->
+             incr failures;
              Printf.printf "signup   : %s failed: %s\n" email (Sqlml.Error.to_string e))
        people);
 
@@ -104,7 +89,9 @@ let () =
          | Ok (Some u) ->
              Printf.printf "show     : %s -> %s\n" email
                (Option.value u.name ~default:"?")
-         | _ -> Printf.printf "show     : %s missing\n" email)
+         | _ ->
+             incr failures;
+             Printf.printf "show     : %s missing\n" email)
        people);
 
   let roster = unwrap "roster" (handle_roster pool) in
@@ -146,11 +133,17 @@ let () =
          get_tag_set c ~id:tag_id)
    with
   | Ok (Some t) ->
+      if not (t.tags = tags && t.scores = [ 7; 8 ] && t.states = [ Active ]) then
+        incr failures;
       Printf.printf "arrays   : tags=%b scores=%b states=%b\n" (t.tags = tags)
         (t.scores = [ 7; 8 ])
         (t.states = [ Active ])
-  | Ok None -> print_endline "arrays   : missing"
-  | Error e -> Printf.printf "arrays   : %s\n" (Sqlml.Error.to_string e));
+  | Ok None ->
+      incr failures;
+      print_endline "arrays   : missing"
+  | Error e ->
+      incr failures;
+      Printf.printf "arrays   : %s\n" (Sqlml.Error.to_string e));
 
   (* streaming through the Caqti driver: DECLARE/FETCH ride the same Driver.S
      operations, so the pool needs nothing special *)
@@ -170,6 +163,15 @@ let () =
   | Ok n -> Printf.printf "stream   : %d row(s) in batches of 2\n" n
   | Error e -> Printf.printf "stream   : %s\n" (Sqlml.Error.to_string e));
 
+  (* jsonb ? operator through the Caqti driver: this used to be re-parsed by
+     Caqti's placeholder grammar and misread as a parameter *)
+  (match Sqlml_caqti.Pool.use pool (fun c -> has_meta_key c ~key:"k") with
+  | Ok rows -> Printf.printf "jsonb ?  : %d row(s) with key\n" (List.length rows)
+  | Error e ->
+      incr failures;
+      Printf.printf "jsonb ?  : %s\n" (Sqlml.Error.to_string e));
+
   List.iter
     (fun (id, _, _) -> ignore (Sqlml_caqti.Pool.use pool (fun c -> delete_user c ~id)))
-    people
+    people;
+  if !failures > 0 then exit 1

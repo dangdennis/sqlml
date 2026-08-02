@@ -44,7 +44,11 @@ let build_or_die ~queries_dir ~database =
 
 let generate queries_dir out_dir module_name database =
   let b = build_or_die ~queries_dir ~database in
-  let mli_path, ml_path = Run.write ~out_dir ~module_name b in
+  let mli_path, ml_path =
+    match Run.write ~out_dir ~module_name b with
+    | Ok p -> p
+    | Error d -> die "%s" (Diag.to_string d)
+  in
   Printf.printf "wrote %s and %s (%d queries from %d file(s))\n" mli_path ml_path
     b.Run.queries b.Run.files
 
@@ -70,10 +74,11 @@ let generate_cmd =
 let check queries_dir out_dir module_name database =
   let b = build_or_die ~queries_dir ~database in
   match Run.check ~out_dir ~module_name b with
-  | [] ->
+  | Error d -> die "%s" (Diag.to_string d)
+  | Ok [] ->
       Printf.printf "up to date (%d queries from %d file(s))\n" b.Run.queries b.Run.files;
       exit 0
-  | drifts ->
+  | Ok drifts ->
       List.iter (fun d -> prerr_endline ("sqlml: " ^ Run.string_of_drift d)) drifts;
       prerr_endline "sqlml: run `sqlml generate` to update";
       exit 1

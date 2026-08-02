@@ -61,6 +61,8 @@ type get_booking_row = {
   duration : Sqlml.Interval.t;
 }
 
+type has_meta_key_row = { id : Uuidm.t }
+
 module Count_users_by_status : sig
   type params = unit
 
@@ -360,4 +362,19 @@ val get_booking : Sqlml.conn -> id:Uuidm.t -> (get_booking_row, Sqlml.Error.t) r
 
 val get_booking_exn : Sqlml.conn -> id:Uuidm.t -> get_booking_row
 (** Raising {!get_booking}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
+module Has_meta_key : sig
+  type params = { key : string }
+
+  include Sqlml.Query.MANY with type params := params and type row = has_meta_key_row
+end
+
+val has_meta_key :
+  Sqlml.conn -> key:string -> (has_meta_key_row list, Sqlml.Error.t) result
+(** The jsonb ? operator: a regression sentinel for drivers that must not re-parse SQL
+    through their own placeholder grammar. *)
+
+val has_meta_key_exn : Sqlml.conn -> key:string -> has_meta_key_row list
+(** Raising {!has_meta_key}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)

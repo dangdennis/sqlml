@@ -58,7 +58,9 @@ let needs_quoting s =
   || String.exists
        (fun c ->
          match c with
-         | ',' | '{' | '}' | '"' | '\\' | ' ' | '\t' | '\n' -> true
+         (* \r \v \f count as whitespace to postgres array_in (scanner_isspace) *)
+         | ',' | '{' | '}' | '"' | '\\' | ' ' | '\t' | '\n' | '\r' | '\011' | '\012' ->
+             true
          | _ -> false)
        s
 

@@ -69,6 +69,39 @@ let diag_of_caqti (e : [< Caqti_error.t ]) =
       | _ -> fallback ())
   | _ -> fallback ()
 
+(* Caqti parses query strings through its own grammar, which assigns meaning
+   to `?` and `$(...)` -- re-parsing sqlml's already-rewritten SQL would
+   misread a jsonb `?` operator as a placeholder, and of_string_exn raises,
+   breaking the result contract. Instead, split the SQL at its own $n sites
+   (only `$` followed by digits; we produced them) and build the query value
+   directly as literal / parameter / literal nodes. *)
+let query_of_sql sql =
+  let n = String.length sql in
+  let parts = ref [] in
+  let lit_start = ref 0 in
+  let i = ref 0 in
+  let flush_lit upto =
+    if upto > !lit_start then
+      parts := Caqti_query.L (String.sub sql !lit_start (upto - !lit_start)) :: !parts
+  in
+  while !i < n do
+    if sql.[!i] = '$' && !i + 1 < n && sql.[!i + 1] >= '0' && sql.[!i + 1] <= '9' then begin
+      flush_lit !i;
+      let j = ref (!i + 1) in
+      let v = ref 0 in
+      while !j < n && sql.[!j] >= '0' && sql.[!j] <= '9' do
+        v := (10 * !v) + Char.code sql.[!j] - Char.code '0';
+        incr j
+      done;
+      parts := Caqti_query.P (!v - 1) :: !parts;
+      i := !j;
+      lit_start := !j
+    end
+    else incr i
+  done;
+  flush_lit n;
+  Caqti_query.S (List.rev !parts)
+
 module Raw = struct
   type conn = (module Caqti_eio.CONNECTION)
 
@@ -84,7 +117,7 @@ module Raw = struct
        the one with a real statement cache. *)
     let req =
       Caqti_request.create ~oneshot:true at rt Caqti_mult.zero_or_more (fun _ ->
-          Caqti_query.of_string_exn sql)
+          query_of_sql sql)
     in
     match Db.collect_list req (mk (List.map Sqlml.Value.to_pg_text params)) with
     | Ok rows -> Ok (List.map (fun r -> Array.of_list (get r)) rows)
@@ -97,7 +130,7 @@ module Raw = struct
     let (Arg (at, mk)) = arg_type (List.length params) in
     let req =
       Caqti_request.create ~oneshot:true at Caqti_type.unit Caqti_mult.zero (fun _ ->
-          Caqti_query.of_string_exn sql)
+          query_of_sql sql)
     in
     match Db.exec req (mk (List.map Sqlml.Value.to_pg_text params)) with
     | Ok () -> Ok 1
@@ -112,7 +145,7 @@ let of_connection (c : (module Caqti_eio.CONNECTION)) : Sqlml.conn =
 let session_setup (module Db : Caqti_eio.CONNECTION) =
   let req =
     Caqti_request.create ~oneshot:true Caqti_type.unit Caqti_type.unit Caqti_mult.zero
-      (fun _ -> Caqti_query.of_string_exn "SET datestyle TO ISO")
+      (fun _ -> query_of_sql "SET datestyle TO ISO")
   in
   Db.exec req ()
 

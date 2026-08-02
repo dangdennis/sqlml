@@ -75,6 +75,8 @@ type get_booking_row = {
   duration : Sqlml.Interval.t;
 }
 
+type has_meta_key_row = { id : Uuidm.t }
+
 module Count_users_by_status = struct
   type params = unit
   type row = count_users_by_status_row
@@ -592,3 +594,20 @@ let get_booking conn ~id =
   Sqlml.fetch_one_strict (module Get_booking) conn { Get_booking.id }
 
 let get_booking_exn conn ~id = Sqlml.or_raise (get_booking conn ~id)
+
+module Has_meta_key = struct
+  type params = { key : string }
+  type row = has_meta_key_row
+
+  let name = "HasMetaKey"
+  let sql (_ : params) = "SELECT id FROM tag_sets WHERE meta ? $1"
+  let encode (p : params) = [ Sqlml.Value.of_string p.key ]
+  let decode r : has_meta_key_row = { id = Sqlml.Row.uuid r 0 }
+  let columns = 1
+  let cardinality = Sqlml.Query.Many
+end
+
+let has_meta_key conn ~key =
+  Sqlml.fetch_all (module Has_meta_key) conn { Has_meta_key.key }
+
+let has_meta_key_exn conn ~key = Sqlml.or_raise (has_meta_key conn ~key)

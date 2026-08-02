@@ -151,12 +151,6 @@ CAMLprim value sqlml_pq_ftablecol(value res, value i)
   CAMLreturn(Val_int(PQftablecol(Res_val(res), Int_val(i))));
 }
 
-CAMLprim value sqlml_pq_fmod(value res, value i)
-{
-  CAMLparam2(res, i);
-  CAMLreturn(Val_int(PQfmod(Res_val(res), Int_val(i))));
-}
-
 /* ---------- tuples (for catalog queries) ---------- */
 
 CAMLprim value sqlml_pq_ntuples(value res)

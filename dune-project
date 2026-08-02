@@ -59,6 +59,8 @@
   (caqti (>= 3.0.0))
   (caqti-eio (>= 3.0.0))
   (uri (>= 4.0.0))
-  ; example programs and e2e only; not needed by the library
-  (caqti-driver-postgresql (and (>= 3.0.0) :with-test))
+  ; the library itself matches Caqti_driver_postgresql.Result_error_msg to
+  ; recover SQLSTATE, so this is a real dependency, not a test one
+  (caqti-driver-postgresql (>= 3.0.0))
+  ; example programs and e2e only
   (eio_main :with-test)))

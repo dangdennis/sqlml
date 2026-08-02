@@ -18,7 +18,7 @@ depends: [
   "caqti" {>= "3.0.0"}
   "caqti-eio" {>= "3.0.0"}
   "uri" {>= "4.0.0"}
-  "caqti-driver-postgresql" {>= "3.0.0" & with-test}
+  "caqti-driver-postgresql" {>= "3.0.0"}
   "eio_main" {with-test}
   "odoc" {with-doc}
 ]

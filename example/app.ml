@@ -8,6 +8,11 @@ open Db
 
 let org = Option.get (Uuidm.of_string "6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 let ( let* ) = Result.bind
+let failures = ref 0
+
+let fail_with e =
+  incr failures;
+  Sqlml.Error.to_string e
 
 (* ---------- a service layer ---------- *)
 
@@ -39,7 +44,7 @@ let roster conn =
   match
     search_users conn ~organization_id:org ~email_pattern:"%@example.com" ~limit:50
   with
-  | Error e -> Printf.sprintf "roster unavailable: %s" (Sqlml.Error.to_string e)
+  | Error e -> Printf.sprintf "roster unavailable: %s" (fail_with e)
   | Ok [] -> "roster: nobody yet"
   | Ok rows ->
       let one (r : search_users_row) = "  - " ^ r.email in
@@ -64,11 +69,11 @@ let () =
   (match signup conn ~id:alice ~email:"alice@example.com" ~display_name:"Alice" with
   | Ok (Some u) -> Printf.printf "signed up : %s\n" u.email
   | Ok None -> print_endline "signed up : vanished?"
-  | Error e -> Printf.printf "signup failed: %s\n" (Sqlml.Error.to_string e));
+  | Error e -> Printf.printf "signup failed: %s\n" (fail_with e));
 
   (match signup conn ~id:bob ~email:"bob@example.com" ~display_name:"Bob" with
   | Ok _ -> print_endline "signed up : bob@example.com"
-  | Error e -> Printf.printf "signup failed: %s\n" (Sqlml.Error.to_string e));
+  | Error e -> Printf.printf "signup failed: %s\n" (fail_with e));
 
   (* a duplicate email violates the unique index -> the whole transaction rolls
      back, and the error arrives as a value rather than an exception *)
@@ -82,4 +87,5 @@ let () =
   print_endline (describe conn ~id:ghost);
   print_endline (roster conn);
 
-  List.iter (fun id -> ignore (delete_user_exn conn ~id)) [ alice; bob ]
+  List.iter (fun id -> ignore (delete_user_exn conn ~id)) [ alice; bob ];
+  if !failures > 0 then exit 1

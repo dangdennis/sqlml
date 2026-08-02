@@ -86,3 +86,8 @@ ON CONFLICT (id) DO UPDATE
 
 -- name: GetBooking :one!
 SELECT on_date, at_time, duration FROM bookings WHERE id = :id;
+
+-- name: HasMetaKey :many
+-- The jsonb ? operator: a regression sentinel for drivers that must not
+-- re-parse SQL through their own placeholder grammar.
+SELECT id FROM tag_sets WHERE meta ? :key;
