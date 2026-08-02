@@ -3,7 +3,12 @@
 open Cmdliner
 open Sqlml_gen
 
-let version = "0.1.0"
+(* Stamped by dune at build time from the project version (or the release
+   watermark), so there is no string to forget to bump. *)
+let version =
+  match Build_info.V1.version () with
+  | None -> "dev"
+  | Some v -> Build_info.V1.Version.to_string v
 
 (* ---------- shared arguments ---------- *)
 

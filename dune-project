@@ -1,5 +1,6 @@
 (lang dune 3.20)
 (name sqlml)
+(version 0.1.0)
 (generate_opam_files true)
 
 (source (github dangdennis/sqlml))
@@ -40,6 +41,7 @@
  (depends
   (ocaml (>= 5.5.0))
   (sqlml (= :version))
+  dune-build-info
   (cmdliner (>= 1.3.0))
   (otoml (>= 1.0.0))
   conf-postgresql))

@@ -1,0 +1,61 @@
+# odoc to GitHub Pages. The build always runs (so doc breakage is caught on a
+# private repo too); the deploy step is skipped while the repository is
+# private, since Pages requires a public repo on the free plan. Once public:
+# Settings -> Pages -> Source: GitHub Actions, and this publishes on push.
+name: docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the opam workflow, not the lockfile
+        run: rm -rf dune.lock
+
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5.0"
+          dune-cache: true
+
+      - name: Install dependencies
+        run: |
+          opam install --yes \
+            ptime uuidm decimal yojson \
+            cmdliner otoml conf-postgresql \
+            caqti caqti-eio caqti-driver-postgresql eio_main \
+            odoc
+
+      - name: Build documentation
+        run: opam exec -- dune build @doc
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _build/default/_doc/_html
+
+  deploy:
+    needs: build
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

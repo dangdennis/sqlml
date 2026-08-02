@@ -2,4 +2,4 @@
  (name main)
  (public_name sqlml)
  (package sqlml-postgresql)
- (libraries sqlml_gen cmdliner unix))
+ (libraries sqlml_gen cmdliner unix dune-build-info))
