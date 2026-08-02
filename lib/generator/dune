@@ -4,4 +4,4 @@
 (library
  (name sqlml_gen)
  (package sqlml-postgresql)
- (libraries unix otoml pq))
+ (libraries unix otoml yojson pq))

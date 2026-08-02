@@ -1,3 +1,7 @@
+# Schema files hashed into sqlml.snapshot.json: editing them invalidates
+# the offline snapshot (`sqlml snapshot` refreshes it).
+schema = ["../schema.sql"]
+
 # Rename generated types and fields.
 [rename]
 users = "user"                  # users_row becomes user_row

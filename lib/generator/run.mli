@@ -22,7 +22,15 @@ val check_unique_names : Parse.t list -> (unit, Diag.t) result
 val first_difference : path:string -> expected:string -> actual:string -> drift option
 (** The line-level diff a drift report points at. *)
 
-val build : queries_dir:string -> conninfo:string -> (built, Diag.t) result
+type source =
+  | Live of string  (** conninfo: ask the database *)
+  | Offline  (** read [sqlml.snapshot.json]; see {!Snapshot} *)
+
+val build : queries_dir:string -> source:source -> (built, Diag.t) result
+
+val snapshot : queries_dir:string -> conninfo:string -> (string * int, Diag.t) result
+(** Describes everything against a live database and writes the offline snapshot; returns
+    its path and the query count. *)
 
 val describe :
   queries_dir:string -> conninfo:string -> (Describe.described list, Diag.t) result

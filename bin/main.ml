@@ -33,6 +33,13 @@ let database =
 
 let conninfo_of = function Some u -> u | None -> Describe.conninfo_of_env ()
 
+let offline =
+  let doc =
+    "Use the committed sqlml.snapshot.json instead of a live database. Create or refresh \
+     it with $(b,sqlml snapshot)."
+  in
+  Arg.(value & flag & info [ "offline" ] ~doc)
+
 let die fmt =
   Printf.ksprintf
     (fun s ->
@@ -40,15 +47,16 @@ let die fmt =
       exit 1)
     fmt
 
-let build_or_die ~queries_dir ~database =
-  match Run.build ~queries_dir ~conninfo:(conninfo_of database) with
+let build_or_die ~queries_dir ~database ~offline =
+  let source = if offline then Run.Offline else Run.Live (conninfo_of database) in
+  match Run.build ~queries_dir ~source with
   | Ok b -> b
   | Error d -> die "%s" (Diag.to_string d)
 
 (* ---------- generate ---------- *)
 
-let generate queries_dir out_dir module_name database =
-  let b = build_or_die ~queries_dir ~database in
+let generate queries_dir out_dir module_name database offline =
+  let b = build_or_die ~queries_dir ~database ~offline in
   let mli_path, ml_path =
     match Run.write ~out_dir ~module_name b with
     | Ok p -> p
@@ -72,12 +80,12 @@ let generate_cmd =
   in
   Cmd.v
     (Cmd.info "generate" ~doc ~man)
-    Term.(const generate $ queries $ out $ module_name $ database)
+    Term.(const generate $ queries $ out $ module_name $ database $ offline)
 
 (* ---------- check ---------- *)
 
-let check queries_dir out_dir module_name database =
-  let b = build_or_die ~queries_dir ~database in
+let check queries_dir out_dir module_name database offline =
+  let b = build_or_die ~queries_dir ~database ~offline in
   match Run.check ~out_dir ~module_name b with
   | Error d -> die "%s" (Diag.to_string d)
   | Ok [] ->
@@ -104,7 +112,7 @@ let check_cmd =
     ]
   in
   Cmd.v (Cmd.info "check" ~doc ~man)
-    Term.(const check $ queries $ out $ module_name $ database)
+    Term.(const check $ queries $ out $ module_name $ database $ offline)
 
 (* ---------- describe ---------- *)
 
@@ -126,6 +134,32 @@ let describe_cmd =
   in
   Cmd.v (Cmd.info "describe" ~doc ~man) Term.(const describe $ queries $ database)
 
+(* ---------- snapshot ---------- *)
+
+let snapshot queries_dir database =
+  match Run.snapshot ~queries_dir ~conninfo:(conninfo_of database) with
+  | Error d -> die "%s" (Diag.to_string d)
+  | Ok (path, n) -> Printf.printf "wrote %s (%d queries)\n" path n
+
+let snapshot_cmd =
+  let doc = "Cache the database's answers so generate/check can run --offline." in
+  let man =
+    [
+      `S Manpage.s_description;
+      `P
+        "Describes every query against a live database and writes sqlml.snapshot.json \
+         beside the queries. Commit it; $(b,generate --offline) and $(b,check --offline) \
+         then need no database.";
+      `P
+        "Each entry is keyed on a hash of every SQL variant the query can execute, and \
+         the schema files listed in sqlml.toml ($(b,schema = [...])) are hashed as a \
+         whole, so editing a query or a listed schema file makes --offline fail loudly \
+         instead of serving stale types. Schema changes outside the listed files are \
+         invisible offline: keep a live $(b,check) in CI as the backstop.";
+    ]
+  in
+  Cmd.v (Cmd.info "snapshot" ~doc ~man) Term.(const snapshot $ queries $ database)
+
 (* ---------- entry point ---------- *)
 
 let main =
@@ -145,6 +179,6 @@ let main =
   in
   Cmd.group
     (Cmd.info "sqlml" ~version ~doc ~man)
-    [ generate_cmd; check_cmd; describe_cmd ]
+    [ generate_cmd; check_cmd; describe_cmd; snapshot_cmd ]
 
 let () = exit (Cmd.eval main)

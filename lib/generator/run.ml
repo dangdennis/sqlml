@@ -68,30 +68,46 @@ let check_unique_names (queries : Parse.t list) =
   in
   go queries
 
-let build ~queries_dir ~conninfo =
+type source = Live of string | Offline
+
+let describe_live ~conninfo queries =
+  let* conn = Describe.connect conninfo in
+  let described = Describe.describe_all conn queries in
+  Pq.finish conn;
+  described
+
+let build ~queries_dir ~source =
   let* files = sql_files queries_dir in
   let* queries = parse_all files in
   let* () = check_unique_names queries in
   (* config is read before the database round-trip: a typo in sqlml.toml
      should not require a live server to be reported *)
   let* config = Config.load queries_dir in
-  let* conn = Describe.connect conninfo in
-  let described = Describe.describe_all conn queries in
-  Pq.finish conn;
-  let* described = described in
+  let* described =
+    match source with
+    | Live conninfo -> describe_live ~conninfo queries
+    | Offline -> Snapshot.describe_offline ~queries_dir ~config queries
+  in
   let* mli, ml = Emit.generate ~config ~src:queries_dir described in
   Ok { mli; ml; queries = List.length described; files = List.length files }
+
+let snapshot ~queries_dir ~conninfo =
+  let* files = sql_files queries_dir in
+  let* queries = parse_all files in
+  let* () = check_unique_names queries in
+  let* config = Config.load queries_dir in
+  let* described = describe_live ~conninfo queries in
+  let* path = Snapshot.write ~queries_dir ~config described in
+  Ok (path, List.length described)
 
 (* Run generated source through ocamlformat, using whatever .ocamlformat applies
    to the output directory, so the result is already in the project's own style.
 
    This matters because `check` compares byte-for-byte. Without it, a user whose
    editor formats on save would see check fail forever on code they did not
-   write. Formatting here means generate and check agree by construction.
-
-   Silently returns the input unchanged when ocamlformat is not installed or
-   rejects the file: formatting is a nicety, not a correctness requirement, and
-   generate should not fail because a developer tool is missing. *)
+   write. Formatting here means generate and check agree by construction --
+   which is also why a missing or mismatched ocamlformat is a loud failure
+   rather than a skipped nicety: the two commands must format identically. *)
 let format ~name contents =
   let tmp = Filename.temp_file "sqlml_fmt" (Filename.extension name) in
   let cleanup () = try Sys.remove tmp with _ -> () in

@@ -29,3 +29,7 @@ determines the parameter and result types.
   diagnostic fields.
 - `sqlml check` byte-compares regenerated output for CI; generated code is
   formatted with the pinned ocamlformat.
+- `sqlml snapshot` caches the database's answers in a committed
+  `sqlml.snapshot.json`, and `generate`/`check` accept `--offline`: no
+  database needed, with loud staleness errors keyed on every SQL variant's
+  hash and on the schema files listed in `sqlml.toml`.

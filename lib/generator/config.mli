@@ -16,3 +16,7 @@ val renamed : t -> string -> string option
 val custom : t -> key:string option -> pg_type:string -> custom option
 (** Most specific wins: an exact ["table.column"] or ["Query.param"] key before a bare
     Postgres type name. *)
+
+val schema : t -> string list
+(** [schema = ["../schema.sql"]]: files (relative to the queries directory) whose hash is
+    stored in the offline snapshot, so schema edits invalidate it. *)

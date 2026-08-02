@@ -9,7 +9,13 @@
  (libraries sqlml ptime))
 
 (tests
- (names test_parse test_typemap test_config test_run test_resolve_render)
+ (names
+  test_parse
+  test_typemap
+  test_config
+  test_run
+  test_resolve_render
+  test_snapshot)
  (package sqlml-postgresql)
  (deps render_golden.ml.expected render_golden.mli.expected)
  (libraries sqlml_gen unix))

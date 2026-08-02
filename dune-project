@@ -44,6 +44,7 @@
   dune-build-info
   (cmdliner (>= 1.3.0))
   (otoml (>= 1.0.0))
+  (yojson (>= 2.0.0))
   conf-postgresql))
 
 (package

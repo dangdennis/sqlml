@@ -81,6 +81,7 @@ Requires OCaml 5.5.0 or later, for modular explicits.
 sqlml generate -q sql -o lib/db      write db.ml and db.mli
 sqlml check    -q sql -o lib/db      verify they match the database; exit 1 if not
 sqlml describe -q sql                print what PostgreSQL says about each query
+sqlml snapshot -q sql                cache the database's answers for --offline
 ```
 
 Connection comes from `DATABASE_URL`, or `PGHOST`/`PGPORT`/`PGUSER`/
@@ -100,6 +101,21 @@ it and only fails at runtime; `check` is what catches that.
  (deps (glob_files_rec sql/*.sql) db.ml db.mli)
  (action (run sqlml check -q sql -o . -m db)))
 ```
+
+### Offline mode
+
+`sqlml snapshot` describes every query against a live database and writes
+`sqlml.snapshot.json` beside the queries. Commit it; `generate --offline` and
+`check --offline` then need no database at all.
+
+Staleness is loud, never silent: each entry is keyed on a hash of every SQL
+variant the query can execute, and the schema files listed in `sqlml.toml`
+(`schema = ["../schema.sql"]`) are hashed as a whole, so editing a query or a
+listed schema file makes `--offline` fail with the query's name and "re-run
+`sqlml snapshot`". The one blind spot is schema drift *outside* the listed
+files — a migration applied to the database but never written down. Offline
+mode cannot see that by construction; keep one live `check` in CI as the
+backstop.
 
 ## Annotations
 

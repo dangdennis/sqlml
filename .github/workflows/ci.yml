@@ -112,6 +112,16 @@ jobs:
       - name: Generated code is current (sqlml check)
         run: opam exec -- dune exec bin/main.exe -- check -q example/sql -o example/generated
 
+      # Same check through the committed snapshot: DATABASE_URL is cleared so
+      # this fails if --offline ever touches the network.
+      - name: Generated code is current, offline (snapshot)
+        run: env -u DATABASE_URL opam exec -- dune exec bin/main.exe -- check --offline -q example/sql -o example/generated
+
+      - name: Snapshot is current
+        run: |
+          opam exec -- dune exec bin/main.exe -- snapshot -q example/sql
+          git diff --exit-code example/sql/sqlml.snapshot.json
+
       - name: Formatting
         run: opam exec -- dune build @fmt
 

@@ -7,9 +7,12 @@ type t = {
       (** ["users"] or ["users.display_name"] to its replacement *)
   customs : (string * custom) list;
       (** ["users.id"], or a bare Postgres type name like ["citext"] *)
+  schema : string list;
+      (** schema files (relative to the queries directory) hashed into the offline
+          snapshot, so [check --offline] can tell the snapshot is stale *)
 }
 
-let empty = { rename = []; customs = [] }
+let empty = { rename = []; customs = []; schema = [] }
 let filename = "sqlml.toml"
 
 open Gen_util
@@ -45,10 +48,20 @@ let of_toml toml =
         | None -> []
         | Some ks -> ks
       in
-      fold_result
-        (fun acc k -> parse_custom toml k |> Result.map (fun c -> c :: acc))
-        [] keys
-      |> Result.map (fun customs -> { rename; customs = List.rev customs })
+      let customs =
+        fold_result
+          (fun acc k -> parse_custom toml k |> Result.map (fun c -> c :: acc))
+          [] keys
+        |> Result.map List.rev
+      in
+      let* customs = customs in
+      let* schema =
+        match Otoml.find_opt toml (Otoml.get_array Otoml.get_string) [ "schema" ] with
+        | None -> Ok []
+        | Some files -> Ok files
+        | exception _ -> err "`schema`: expected an array of file paths"
+      in
+      Ok { rename; customs; schema }
 
 let load dir =
   let path = Filename.concat dir filename in
@@ -64,6 +77,7 @@ let load dir =
 (* ---------- lookups ---------- *)
 
 let renamed t key = List.assoc_opt key t.rename
+let schema t = t.schema
 
 (** Most specific wins: an exact ["table.column"] or ["Query.param"] key before a bare
     Postgres type name like ["uuid"].

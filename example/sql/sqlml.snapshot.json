@@ -1,0 +1,790 @@
+{
+  "format_version": 1,
+  "schema_files": [ "../schema.sql" ],
+  "schema_hash": "06bd61ac901b5dceb887923f7347437f1b8100a1b2ef60013fa0601eb9784110",
+  "queries": [
+    {
+      "name": "CountPostsByUser",
+      "variants": [
+        "fa7d579b65a2c1c1a7faa60d7d68779b2f0485d65eeab814b3293b931d4a54d0"
+      ],
+      "params": [],
+      "columns": [
+        {
+          "name": "email",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 3,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "title",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "posts",
+          "table_col": 3,
+          "nullable": true,
+          "enum_labels": []
+        },
+        {
+          "name": "post_count",
+          "type_name": "int8",
+          "elem_type_name": null,
+          "table": null,
+          "table_col": 0,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "CountUsersByStatus",
+      "variants": [
+        "77b1d2f975ecc57703262bfb338521a6d39ac9b4cfd3feb10cea90f6d8b5c182"
+      ],
+      "params": [],
+      "columns": [
+        {
+          "name": "status",
+          "type_name": "user_status",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 5,
+          "nullable": false,
+          "enum_labels": [ "active", "banned" ]
+        },
+        {
+          "name": "n",
+          "type_name": "int8",
+          "elem_type_name": null,
+          "table": null,
+          "table_col": 0,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "CreateUser",
+      "variants": [
+        "33b2a5b448e4580430b79133f451bb50e38b3ee6aef4c886275787997566f047"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "organization_id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "email",
+          "ptype_name": "text",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "display_name",
+          "ptype_name": "text",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": true
+        },
+        {
+          "pname": "status",
+          "ptype_name": "user_status",
+          "pelem_type_name": null,
+          "penum_labels": [ "active", "banned" ],
+          "pnullable": false
+        },
+        {
+          "pname": "balance",
+          "ptype_name": "numeric",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [],
+      "model_table": null
+    },
+    {
+      "name": "DeleteUser",
+      "variants": [
+        "c7c34ba21fa6d67bd2be655724e9b616806efd5f39b994c4ae3ead83d2f73c00"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [],
+      "model_table": null
+    },
+    {
+      "name": "FindUsers",
+      "variants": [
+        "6133427c12b73ed111e54b1463940ea59b315bb9a08308c74d575ae758407077",
+        "5c1be1cd7c66fd908288620ec9eaba9bb9b45d8c84461e1249f02c6bc7749d04",
+        "24809c8c6eda9715cbc41b2984fbb8e03e7b0d42552e9d8f1f043488e475beb8",
+        "0a70f0daa923b1e77040abc76519221fb8dcf7e8250c65bf5c44c836c84d5e01",
+        "642a97d15fe2cf9370d531b31f4f9ddd454c944a75682ef944ad1334a1db4c19",
+        "ace127a323ee8d5de4fbd66e6988f2481b0ec65989b58be99e18e368347cfca1",
+        "a4a9bc3b06e593d4c3b7389d61e2eac8ccb59152d659eedf493ac0b86ecf007f",
+        "fbfd562ca3e3930add9cf57c71361f14c57b7d8129944141c42b20b26ed6b062"
+      ],
+      "params": [
+        {
+          "pname": "org",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "email",
+          "ptype_name": "text",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "status",
+          "ptype_name": "user_status",
+          "pelem_type_name": null,
+          "penum_labels": [ "active", "banned" ],
+          "pnullable": false
+        },
+        {
+          "pname": "min_balance",
+          "ptype_name": "numeric",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "limit",
+          "ptype_name": "int8",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type_name": "uuid",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 1,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "email",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 3,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "status",
+          "type_name": "user_status",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 5,
+          "nullable": false,
+          "enum_labels": [ "active", "banned" ]
+        },
+        {
+          "name": "balance",
+          "type_name": "numeric",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 6,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "GetBooking",
+      "variants": [
+        "c2755c8fa20856db4dbe3045766241d2b307098061d30a3927554ff9c64e1a2c"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "on_date",
+          "type_name": "date",
+          "elem_type_name": null,
+          "table": "bookings",
+          "table_col": 2,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "at_time",
+          "type_name": "time",
+          "elem_type_name": null,
+          "table": "bookings",
+          "table_col": 3,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "duration",
+          "type_name": "interval",
+          "elem_type_name": null,
+          "table": "bookings",
+          "table_col": 4,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "GetTagSet",
+      "variants": [
+        "89138a3a0ec08cf504faf141a3eab31880897500c34129d09e998a1dc41ae12f"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "tags",
+          "type_name": "_text",
+          "elem_type_name": "text",
+          "table": "tag_sets",
+          "table_col": 3,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "scores",
+          "type_name": "_int4",
+          "elem_type_name": "int4",
+          "table": "tag_sets",
+          "table_col": 4,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "states",
+          "type_name": "_user_status",
+          "elem_type_name": "user_status",
+          "table": "tag_sets",
+          "table_col": 5,
+          "nullable": false,
+          "enum_labels": [ "active", "banned" ]
+        },
+        {
+          "name": "meta",
+          "type_name": "jsonb",
+          "elem_type_name": null,
+          "table": "tag_sets",
+          "table_col": 6,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "GetUser",
+      "variants": [
+        "1f7780fb339ce6d3a65a591ae85b47407836a5c2e0c22fd12f2ccc523d41e5b7"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type_name": "uuid",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 1,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "email",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 3,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "display_name",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 4,
+          "nullable": true,
+          "enum_labels": []
+        },
+        {
+          "name": "status",
+          "type_name": "user_status",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 5,
+          "nullable": false,
+          "enum_labels": [ "active", "banned" ]
+        },
+        {
+          "name": "balance",
+          "type_name": "numeric",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 6,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "created_at",
+          "type_name": "timestamptz",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 7,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "GetUserFull",
+      "variants": [
+        "27920cf5ebd2409c57958c0de4210b9268d36f46a86d6e433a87ed9895e77c10"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type_name": "uuid",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 1,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "organization_id",
+          "type_name": "uuid",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 2,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "email",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 3,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "display_name",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 4,
+          "nullable": true,
+          "enum_labels": []
+        },
+        {
+          "name": "status",
+          "type_name": "user_status",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 5,
+          "nullable": false,
+          "enum_labels": [ "active", "banned" ]
+        },
+        {
+          "name": "balance",
+          "type_name": "numeric",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 6,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "created_at",
+          "type_name": "timestamptz",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 7,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": "users"
+    },
+    {
+      "name": "GetUserStrict",
+      "variants": [
+        "1f7780fb339ce6d3a65a591ae85b47407836a5c2e0c22fd12f2ccc523d41e5b7"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type_name": "uuid",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 1,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "email",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 3,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "display_name",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 4,
+          "nullable": true,
+          "enum_labels": []
+        },
+        {
+          "name": "status",
+          "type_name": "user_status",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 5,
+          "nullable": false,
+          "enum_labels": [ "active", "banned" ]
+        },
+        {
+          "name": "balance",
+          "type_name": "numeric",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 6,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "created_at",
+          "type_name": "timestamptz",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 7,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "GetUsersByIds",
+      "variants": [
+        "89b7a99ec583694f1499d647d198a6f0a3a1b9d6e8a99054fa98450f0611cfa1"
+      ],
+      "params": [
+        {
+          "pname": "ids",
+          "ptype_name": "_uuid",
+          "pelem_type_name": "uuid",
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type_name": "uuid",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 1,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "email",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 3,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "HasMetaKey",
+      "variants": [
+        "82b14d9e46e61d7d571dfc8806dcf3626a5e50fe54defeac225ee9902a2bbdc0"
+      ],
+      "params": [
+        {
+          "pname": "key",
+          "ptype_name": "text",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type_name": "uuid",
+          "elem_type_name": null,
+          "table": "tag_sets",
+          "table_col": 1,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "PutBooking",
+      "variants": [
+        "edda5552554d7cdf4d44bb3384c25431269bc1a49a38a0049ee4afa3ac354719"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "on_date",
+          "ptype_name": "date",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "at_time",
+          "ptype_name": "time",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "duration",
+          "ptype_name": "interval",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [],
+      "model_table": null
+    },
+    {
+      "name": "PutTagSet",
+      "variants": [
+        "6760b3b6102489fcaecd8cde62c79c11899f65e2172b2b92025919b248c40e37"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "owner",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "tags",
+          "ptype_name": "_text",
+          "pelem_type_name": "text",
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "scores",
+          "ptype_name": "_int4",
+          "pelem_type_name": "int4",
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "states",
+          "ptype_name": "_user_status",
+          "pelem_type_name": "user_status",
+          "penum_labels": [ "active", "banned" ],
+          "pnullable": false
+        },
+        {
+          "pname": "meta",
+          "ptype_name": "jsonb",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [],
+      "model_table": null
+    },
+    {
+      "name": "SearchUsers",
+      "variants": [
+        "beeb4f2b1c75188b7ea7e14b7f00d52b2e5a74cd4ef8eb8bc6040d8b5110b725"
+      ],
+      "params": [
+        {
+          "pname": "organization_id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "email_pattern",
+          "ptype_name": "text",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "limit",
+          "ptype_name": "int8",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type_name": "uuid",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 1,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "email",
+          "type_name": "text",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 3,
+          "nullable": false,
+          "enum_labels": []
+        },
+        {
+          "name": "created_at",
+          "type_name": "timestamptz",
+          "elem_type_name": null,
+          "table": "users",
+          "table_col": 7,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "SetDisplayName",
+      "variants": [
+        "e054656d40feb32346c03855669d5758129d49c2b60b6232607e0731503aeca9"
+      ],
+      "params": [
+        {
+          "pname": "display_name",
+          "ptype_name": "text",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": true
+        },
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [],
+      "model_table": null
+    }
+  ]
+}

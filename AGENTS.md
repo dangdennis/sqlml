@@ -42,6 +42,8 @@ dune exec example/e2e.exe      # end-to-end against Postgres (libpq driver)
 dune exec example/web.exe      # pooled Caqti driver, concurrency, streaming
 dune exec bin/main.exe -- generate -q example/sql -o example/generated
 dune exec bin/main.exe -- check -q example/sql -o example/generated
+dune exec bin/main.exe -- check --offline -q example/sql -o example/generated  # via sqlml.snapshot.json
+dune exec bin/main.exe -- snapshot -q example/sql   # refresh the snapshot after schema/query changes
 dune build @fmt                # must be clean; version-pinned ocamlformat
 dune build @doc
 dune build -p sqlml,sqlml-postgresql,sqlml-caqti @install   # release isolation
