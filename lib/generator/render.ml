@@ -24,10 +24,26 @@ let emit_enum_types b enums =
       bprintf b "\n")
     enums
 
+(* A SQL docstring containing a comment terminator, or an unbalanced comment
+   opener, would break the generated (** ... *) block; neutralise both by
+   splitting the two-character sequences. *)
+let sanitize_doc line =
+  let b = Buffer.create (String.length line) in
+  String.iteri
+    (fun i c ->
+      if c = '*' && i + 1 < String.length line && line.[i + 1] = ')' then
+        Buffer.add_string b "* "
+      else if c = '(' && i + 1 < String.length line && line.[i + 1] = '*' then
+        Buffer.add_string b "( "
+      else Buffer.add_char b c)
+    line;
+  Buffer.contents b
+
 let emit_doc b (q : Parse.t) =
   match q.Parse.doc with
   | [] -> ()
-  | lines -> bprintf b "(** %s *)\n" (String.concat "\n    " lines)
+  | lines ->
+      bprintf b "(** %s *)\n" (String.concat "\n    " (List.map sanitize_doc lines))
 
 (* mandatory args first (in SQL order), then optional; a trailing unit only when
    there is at least one optional *)

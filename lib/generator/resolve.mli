@@ -27,5 +27,5 @@ val collect_rows : resolved list -> ((string * field list) list, Diag.t) result
 (** Row types to emit, first-seen order, deduplicated by name; a name claimed with
     different fields is an error naming both origins. *)
 
-val collect_enums : resolved list -> (string * string list) list
+val collect_enums : resolved list -> ((string * string list) list, Diag.t) result
 val block_param_names : Parse.t -> string list

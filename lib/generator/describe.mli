@@ -41,5 +41,8 @@ type described = private {
 }
 
 val conninfo_of_env : unit -> string
-val connect : string -> (Pq.conn, string) result
+val connect : string -> (Pq.conn, Diag.t) result
 val describe_all : Pq.conn -> Parse.t list -> (described list, Diag.t) result
+
+val report : described -> string
+(** Human-readable report for one query, as printed by [sqlml describe]. *)

@@ -134,6 +134,8 @@ let fetch_one_strict (module Q : Query.ONE_STRICT) (conn : conn) (p : Q.params) 
         (Error.Cardinality
            { query = Q.name; expected = "exactly 1"; got = List.length rows })
 
+let close (conn : conn) = match conn with Driver.Conn ((module D), c, _) -> D.close c
+
 (* ---------- transactions ---------- *)
 
 let statement (conn : conn) sql =

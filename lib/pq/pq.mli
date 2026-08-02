@@ -69,5 +69,5 @@ val getvalue : res -> int -> int -> string
 val getisnull : res -> int -> int -> bool
 val cmd_tuples : res -> int
 
-val query : conn -> string -> (string array list, string) result
+val query : conn -> string -> (string array list, diag) result
 (** A catalog query returning rows as string arrays; NULL becomes [""]. *)

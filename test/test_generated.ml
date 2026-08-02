@@ -23,6 +23,7 @@ module Stub = struct
 
   let name = "stub"
   let placeholder n = "$" ^ string_of_int n
+  let close _ = ()
 
   let query c ~sql ~params ~columns:_ =
     c.last_params <- params;

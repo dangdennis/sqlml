@@ -3,8 +3,11 @@
     Authoring model is sqlc's: many queries per file, each introduced by a header comment
     carrying a name and a cardinality.
 
-    -- name: GetUser :one -- Fetches a single user by id. SELECT id, email, display_name
-    FROM users WHERE id = :id;
+    {[
+      -- name: GetUser :one
+      -- Fetches a single user by id.
+      SELECT id, email, display_name FROM users WHERE id = :id;
+    ]}
 
     Named parameters (:id) are rewritten to positional ($1) before the query is sent to
     Postgres, and the names become the fields of the generated params record.
@@ -423,7 +426,8 @@ let of_string ~file contents =
           match cardinality_of_string card with
           | Some c -> Ok c
           | None ->
-              err file line "unknown cardinality %S (expected :one, :many or :exec)" card
+              err file line
+                "unknown cardinality %S (expected :one, :one!, :many or :exec)" card
         in
         let body = List.rev !body in
         (* leading comment lines directly under the header are the docstring *)
@@ -467,11 +471,14 @@ let of_string ~file contents =
   build [] groups
 
 let of_file file =
-  let ic = open_in_bin file in
-  let len = in_channel_length ic in
-  let contents = really_input_string ic len in
-  close_in ic;
-  of_string ~file contents
+  match
+    let ic = open_in_bin file in
+    Fun.protect
+      ~finally:(fun () -> close_in_noerr ic)
+      (fun () -> really_input_string ic (in_channel_length ic))
+  with
+  | contents -> of_string ~file contents
+  | exception Sys_error m -> Diag.error ~file "%s" m
 
 let string_of_cardinality = function
   | One -> "one"

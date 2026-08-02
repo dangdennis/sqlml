@@ -15,6 +15,7 @@ module Raw = struct
   type conn = { raw : Pq.conn; stmts : (string, prep) Hashtbl.t; mutable counter : int }
 
   let name = "postgresql"
+  let close conn = Pq.finish conn.raw
   let placeholder n = "$" ^ string_of_int n
 
   (* peek at a result's failure state without consuming it *)

@@ -39,22 +39,24 @@ let resolve_column cfg (q : Parse.t) (c : Describe.column) =
       ~key:(Option.map (fun t -> t ^ "." ^ c.Describe.name) table)
       ~pg_type:c.Describe.type_name
   in
-  match
-    Typemap.of_pg ?custom ~type_name:c.Describe.type_name
-      ~elem_type_name:c.Describe.elem_type_name ~enum_labels:c.Describe.enum_labels
-      ~nullable:c.Describe.nullable ()
-  with
-  | Some t ->
-      Ok
-        {
-          fname = field_name cfg ~table ~name:c.Describe.name;
-          ftype = t;
-          ord = c.Describe.table_col;
-        }
-  | None ->
-      Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
-        "column %S has Postgres type %S, which sqlml has no mapping for" c.Describe.name
-        c.Describe.type_name
+  let fname = field_name cfg ~table ~name:c.Describe.name in
+  if not (Gen_util.is_lower_ident fname) then
+    Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
+      "column %S is not usable as an OCaml field name%s; alias it in the SELECT list (AS \
+       some_name) or rename it in sqlml.toml"
+      fname
+      (if List.mem fname Gen_util.ocaml_keywords then " (OCaml keyword)" else "")
+  else
+    match
+      Typemap.of_pg ?custom ~type_name:c.Describe.type_name
+        ~elem_type_name:c.Describe.elem_type_name ~enum_labels:c.Describe.enum_labels
+        ~nullable:c.Describe.nullable ()
+    with
+    | Some t -> Ok { fname; ftype = t; ord = c.Describe.table_col }
+    | None ->
+        Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
+          "column %S has Postgres type %S, which sqlml has no mapping for" c.Describe.name
+          c.Describe.type_name
 
 let block_param_names (q : Parse.t) =
   match q.Parse.dynamic with
@@ -75,6 +77,13 @@ let resolve_param cfg (q : Parse.t) (p : Describe.param) =
   with
   (* a block parameter is optional by construction: Option in the record and
      an optional argument, but encoded by omission rather than as NULL *)
+  | Some t when not (Gen_util.is_lower_ident p.Describe.pname) ->
+      ignore t;
+      Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
+        "parameter %S is not usable as an OCaml argument name%s; rename the :param"
+        p.Describe.pname
+        (if List.mem p.Describe.pname Gen_util.ocaml_keywords then " (OCaml keyword)"
+         else "")
   | Some t ->
       let t = if in_block then Typemap.Option t else t in
       Ok { fname = p.Describe.pname; ftype = t; ord = 0 }
@@ -135,24 +144,42 @@ let resolve cfg (d : Describe.described) =
 
 let collect_enums resolved =
   let tbl = Hashtbl.create 8 in
-  let add = function
+  let conflict = ref None in
+  let bad_name = ref None in
+  let add ~ctx = function
     | Typemap.Enum (n, labels)
     | Typemap.Option (Typemap.Enum (n, labels))
     | Typemap.Array (Typemap.Enum (n, labels))
     | Typemap.Option (Typemap.Array (Typemap.Enum (n, labels))) -> (
+        if (not (Gen_util.is_lower_ident n)) && !bad_name = None then
+          bad_name := Some (n, ctx);
         match Hashtbl.find_opt tbl n with
         | Some existing when existing <> labels ->
-            (* same type name with different labels cannot happen from one database *)
-            ()
+            (* typnames are schema-scoped: two schemas on the search path can
+               both define an enum called `status` with different labels, and
+               decoding one with the other's constructors would be silently
+               wrong data *)
+            if !conflict = None then conflict := Some (n, ctx)
         | _ -> Hashtbl.replace tbl n labels)
     | _ -> ()
   in
   List.iter
     (fun r ->
-      List.iter (fun f -> add f.ftype) r.cols;
-      List.iter (fun f -> add f.ftype) r.ps)
+      let ctx = r.d.Describe.query in
+      List.iter (fun f -> add ~ctx f.ftype) r.cols;
+      List.iter (fun f -> add ~ctx f.ftype) r.ps)
     resolved;
-  Hashtbl.fold (fun k v acc -> (k, v) :: acc) tbl [] |> List.sort compare
+  match (!bad_name, !conflict) with
+  | Some (n, q), _ ->
+      Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
+        "enum type %S is not usable as an OCaml type name; rename it in sqlml.toml" n
+  | _, Some (n, q) ->
+      Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
+        "two different enums named %S (schema-scoped typnames?) reach this module with \
+         different labels; qualify or rename one in sqlml.toml"
+        n
+  | None, None ->
+      Ok (Hashtbl.fold (fun k v acc -> (k, v) :: acc) tbl [] |> List.sort compare)
 
 (* Row types to emit, in first-seen order, deduplicated by name. A shared model
    appearing in several queries is emitted once; a mismatch in field types

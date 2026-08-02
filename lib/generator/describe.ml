@@ -55,10 +55,11 @@ let conninfo_of_env = Pq.conninfo_of_env
 let connect conninfo =
   let c = Pq.connect conninfo in
   if Pq.connect_ok c then Ok c
-  else
+  else begin
     let m = String.trim (Pq.error_message c) in
     Pq.finish c;
-    Error m
+    Diag.error "could not connect: %s" m
+  end
 
 (* ---------- name overrides ---------- *)
 
@@ -272,7 +273,7 @@ let describe_all conn (queries : Parse.t list) =
       (List.concat_map (fun (_, _, cs) -> List.map (fun c -> (c.rtable, c.rcol)) cs) raws)
   in
   let all_tables = uniq (List.filter (fun t -> t <> 0) (List.map fst all_pairs)) in
-  let catalog f = Result.map_error (fun m -> Diag.v m) f in
+  let catalog f = Result.map_error (fun (d : Pq.diag) -> Diag.v d.Pq.message) f in
   let* tinfos = catalog (type_infos conn all_type_oids) in
   (* an array of an enum carries its labels on the element type *)
   let elem_oids =
@@ -363,3 +364,31 @@ let describe_all conn (queries : Parse.t list) =
          in
          { query = q; params; columns; model_table })
        raws)
+
+(* Human-readable report for `sqlml describe`, one query per call. *)
+let report d =
+  let b = Buffer.create 256 in
+  let bp fmt = Printf.ksprintf (Buffer.add_string b) fmt in
+  let q = d.query in
+  bp "%s  (:%s)  %s:%d\n" q.Parse.name
+    (Parse.string_of_cardinality q.Parse.cardinality)
+    q.Parse.file q.Parse.line;
+  (match d.model_table with Some t -> bp "  model    : %s (full row)\n" t | None -> ());
+  List.iter
+    (fun p ->
+      bp "  param $%d : %-14s %s%s%s\n" p.index p.ptype_name p.pname
+        (if p.pnullable then "  [nullable]" else "")
+        (match p.penum_labels with
+        | [] -> ""
+        | l -> "  enum{" ^ String.concat "|" l ^ "}"))
+    d.params;
+  List.iter
+    (fun c ->
+      bp "  col      : %-14s %-14s %s%s%s\n" c.name c.type_name
+        (if c.nullable then "nullable" else "NOT NULL")
+        (if c.table_oid = 0 then "  [computed]"
+         else Printf.sprintf "  [tbl %d col %d]" c.table_oid c.table_col)
+        (match c.enum_labels with [] -> "" | l -> "  enum{" ^ String.concat "|" l ^ "}"))
+    d.columns;
+  Buffer.add_char b '\n';
+  Buffer.contents b

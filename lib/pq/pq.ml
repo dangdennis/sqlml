@@ -85,7 +85,7 @@ let check r =
 (* A catalog query returning rows as string arrays; NULL becomes "". *)
 let query conn sql =
   match check (exec conn sql) with
-  | Error e -> Error e.message
+  | Error e -> Error e
   | Ok r ->
       with_result r (fun r ->
           let cols = nfields r in

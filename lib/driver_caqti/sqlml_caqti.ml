@@ -106,6 +106,7 @@ module Raw = struct
   type conn = (module Caqti_eio.CONNECTION)
 
   let name = "caqti-eio/postgresql"
+  let close (module Db : Caqti_eio.CONNECTION) = Db.disconnect ()
   let placeholder n = "$" ^ string_of_int n
 
   let query (module Db : Caqti_eio.CONNECTION) ~sql ~params ~columns =
@@ -143,11 +144,16 @@ let of_connection (c : (module Caqti_eio.CONNECTION)) : Sqlml.conn =
 (* See the libpq driver: the decoders parse ISO output, so DateStyle is pinned
    per session. Runs once per physical connection via post_connect. *)
 let session_setup (module Db : Caqti_eio.CONNECTION) =
-  let req =
-    Caqti_request.create ~oneshot:true Caqti_type.unit Caqti_type.unit Caqti_mult.zero
-      (fun _ -> query_of_sql "SET datestyle TO ISO")
+  let run sql =
+    let req =
+      Caqti_request.create ~oneshot:true Caqti_type.unit Caqti_type.unit Caqti_mult.zero
+        (fun _ -> query_of_sql sql)
+    in
+    Db.exec req ()
   in
-  Db.exec req ()
+  List.fold_left
+    (fun acc sql -> match acc with Ok () -> run sql | e -> e)
+    (Ok ()) Sqlml.Driver.session_setup
 
 let err e = Sqlml.Error.Connect (Caqti_error.show e)
 
@@ -159,8 +165,17 @@ let uri_of_env () =
     | Some u when String.trim u <> "" -> u
     | _ ->
         let get k d = match Sys.getenv_opt k with Some v when v <> "" -> v | _ -> d in
-        Printf.sprintf "postgresql://%s@%s:%s/%s" (get "PGUSER" "postgres")
-          (get "PGHOST" "127.0.0.1") (get "PGPORT" "5432") (get "PGDATABASE" "postgres"))
+        (* PGPASSWORD is the documented variable; dropping it here caused a
+           silent auth failure that the libpq path did not have. Percent-encode
+           the userinfo so special characters survive URI parsing. *)
+        let enc v = Uri.pct_encode ~component:`Userinfo v in
+        let userinfo =
+          match Sys.getenv_opt "PGPASSWORD" with
+          | Some pw when pw <> "" -> enc (get "PGUSER" "postgres") ^ ":" ^ enc pw
+          | _ -> enc (get "PGUSER" "postgres")
+        in
+        Printf.sprintf "postgresql://%s@%s:%s/%s" userinfo (get "PGHOST" "127.0.0.1")
+          (get "PGPORT" "5432") (get "PGDATABASE" "postgres"))
 
 (* A single connection, for scripts and tests. A web app wants {!connect_pool}. *)
 let connect ~sw ~stdenv uri =

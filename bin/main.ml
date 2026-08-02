@@ -104,57 +104,9 @@ let check_cmd =
 (* ---------- describe ---------- *)
 
 let describe queries_dir database =
-  let conninfo = conninfo_of database in
-  let files =
-    match Run.sql_files queries_dir with
-    | Ok f -> f
-    | Error d -> die "%s" (Diag.to_string d)
-  in
-  let qs =
-    match Run.parse_all files with Ok q -> q | Error d -> die "%s" (Diag.to_string d)
-  in
-  let conn =
-    match Describe.connect conninfo with
-    | Ok c -> c
-    | Error m -> die "could not connect: %s" m
-  in
-  (match Describe.describe_all conn qs with
-  | Error e -> die "%s" (Diag.to_string e)
-  | Ok described ->
-      List.iter
-        (fun (d : Describe.described) ->
-          let q = d.Describe.query in
-          Printf.printf "%s  (:%s)  %s:%d\n" q.Parse.name
-            (Parse.string_of_cardinality q.Parse.cardinality)
-            q.Parse.file q.Parse.line;
-          (match d.Describe.model_table with
-          | Some t -> Printf.printf "  model    : %s (full row)\n" t
-          | None -> ());
-          List.iter
-            (fun (p : Describe.param) ->
-              Printf.printf "  param $%d : %-14s %s%s%s\n" p.Describe.index
-                p.Describe.ptype_name p.Describe.pname
-                (if p.Describe.pnullable then "  [nullable]" else "")
-                (match p.Describe.penum_labels with
-                | [] -> ""
-                | l -> "  enum{" ^ String.concat "|" l ^ "}"))
-            d.Describe.params;
-          List.iter
-            (fun (c : Describe.column) ->
-              Printf.printf "  col      : %-14s %-14s %s%s%s\n" c.Describe.name
-                c.Describe.type_name
-                (if c.Describe.nullable then "nullable" else "NOT NULL")
-                (if c.Describe.table_oid = 0 then "  [computed]"
-                 else
-                   Printf.sprintf "  [tbl %d col %d]" c.Describe.table_oid
-                     c.Describe.table_col)
-                (match c.Describe.enum_labels with
-                | [] -> ""
-                | l -> "  enum{" ^ String.concat "|" l ^ "}"))
-            d.Describe.columns;
-          print_newline ())
-        described);
-  Pq.finish conn
+  match Run.describe ~queries_dir ~conninfo:(conninfo_of database) with
+  | Error d -> die "%s" (Diag.to_string d)
+  | Ok described -> List.iter (fun d -> print_string (Describe.report d)) described
 
 let describe_cmd =
   let doc = "Print what PostgreSQL says about each query." in

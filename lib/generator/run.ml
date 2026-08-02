@@ -57,15 +57,18 @@ let check_unique_names (queries : Parse.t list) =
   let rec go = function
     | [] -> Ok ()
     | (q : Parse.t) :: tl -> (
-        match Hashtbl.find_opt seen q.Parse.name with
+        (* keyed on the snake_cased form: GetUser and Get_user are distinct
+           query names but generate the same get_user function *)
+        match Hashtbl.find_opt seen (Parse.to_snake q.Parse.name) with
         | Some (f, l) ->
             Diag.error ~file:q.Parse.file ~line:q.Parse.line
-              "duplicate query name %S, already defined at %s:%d\n\
+              "query name %S collides with one already defined at %s:%d (names that \
+               differ only in casing generate the same OCaml identifiers)\n\
               \  query names must be unique across every .sql file, because they all \
                generate into one module"
               q.Parse.name f l
         | None ->
-            Hashtbl.replace seen q.Parse.name (q.Parse.file, q.Parse.line);
+            Hashtbl.replace seen (Parse.to_snake q.Parse.name) (q.Parse.file, q.Parse.line);
             go tl)
   in
   go queries
@@ -74,14 +77,13 @@ let build ~queries_dir ~conninfo =
   let* files = sql_files queries_dir in
   let* queries = parse_all files in
   let* () = check_unique_names queries in
-  let* conn =
-    Describe.connect conninfo
-    |> Result.map_error (fun m -> Diag.v ("could not connect: " ^ m))
-  in
+  (* config is read before the database round-trip: a typo in sqlml.toml
+     should not require a live server to be reported *)
+  let* config = Config.load queries_dir in
+  let* conn = Describe.connect conninfo in
   let described = Describe.describe_all conn queries in
   Pq.finish conn;
   let* described = described in
-  let* config = Config.load queries_dir in
   let* mli, ml = Emit.generate ~config ~src:queries_dir described in
   Ok { mli; ml; queries = List.length described; files = List.length files }
 
@@ -133,6 +135,16 @@ let format_built ~out_dir ~module_name b =
   let* ml = format ~name:(base ^ ".ml") b.ml in
   Ok { b with mli; ml }
 
+(* The describe subcommand's pipeline: everything build does, minus emit. *)
+let describe ~queries_dir ~conninfo =
+  let* files = sql_files queries_dir in
+  let* queries = parse_all files in
+  let* () = check_unique_names queries in
+  let* conn = Describe.connect conninfo in
+  let described = Describe.describe_all conn queries in
+  Pq.finish conn;
+  described
+
 let paths ~out_dir ~module_name =
   let base = Filename.concat out_dir module_name in
   (base ^ ".mli", base ^ ".ml")
@@ -151,13 +163,25 @@ let write_file path contents =
   output_string oc contents;
   close_out oc
 
+let rec mkdir_p dir =
+  if dir <> "" && dir <> "/" && dir <> "." && not (Sys.file_exists dir) then begin
+    mkdir_p (Filename.dirname dir);
+    try Unix.mkdir dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ()
+  end
+
 let write ~out_dir ~module_name b =
-  if not (Sys.file_exists out_dir) then Unix.mkdir out_dir 0o755;
-  let* b = format_built ~out_dir ~module_name b in
-  let mli_path, ml_path = paths ~out_dir ~module_name in
-  write_file mli_path b.mli;
-  write_file ml_path b.ml;
-  Ok (mli_path, ml_path)
+  match
+    let* b = format_built ~out_dir ~module_name b in
+    mkdir_p out_dir;
+    let mli_path, ml_path = paths ~out_dir ~module_name in
+    write_file mli_path b.mli;
+    write_file ml_path b.ml;
+    Ok (mli_path, ml_path)
+  with
+  | r -> r
+  | exception Sys_error m -> Diag.error "cannot write output: %s" m
+  | exception Unix.Unix_error (e, _, p) ->
+      Diag.error "cannot write output: %s: %s" p (Unix.error_message e)
 
 (* First differing line, so the report points at something actionable rather
    than just saying the files differ. *)

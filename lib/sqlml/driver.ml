@@ -44,7 +44,16 @@ module type S = sig
     (Value.t array list, error) result
 
   val exec : conn -> sql:string -> params:Value.t list -> (int, error) result
+  val close : conn -> unit
+  (* Releases the underlying handle. For pooled connections this is the
+     driver's choice of return-to-pool or no-op; the pool owns the lifetime. *)
 end
+
+(* Statements every driver must run once per physical connection before it is
+   used. The temporal decoders parse ISO output, so this is a runtime
+   invariant, not a per-driver preference -- a driver that skips it corrupts
+   every date and timestamp read on servers with a different DateStyle. *)
+let session_setup = [ "SET datestyle TO ISO" ]
 
 (* The [int ref] is transaction depth, owned by [Sqlml.transaction]: 0 outside
    any transaction, incremented per nesting level. It lives here so that the

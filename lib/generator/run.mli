@@ -16,6 +16,10 @@ val sql_files : string -> (string list, Diag.t) result
 val parse_all : string list -> (Parse.t list, Diag.t) result
 val build : queries_dir:string -> conninfo:string -> (built, Diag.t) result
 
+val describe :
+  queries_dir:string -> conninfo:string -> (Describe.described list, Diag.t) result
+(** The describe subcommand's pipeline: discover, parse, describe — no emit. *)
+
 val write :
   out_dir:string -> module_name:string -> built -> (string * string, Diag.t) result
 (** Writes [module_name].mli/.ml, formatted through the project's own ocamlformat; returns

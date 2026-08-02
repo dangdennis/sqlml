@@ -188,7 +188,13 @@ module Elem = struct
   let string s = s
   let int s = int_of_string s
   let float s = float_of_string s
-  let bool s = match s with "t" | "true" | "TRUE" -> true | _ -> false
+
+  let bool s =
+    match s with
+    | "t" | "true" | "TRUE" -> true
+    | "f" | "false" | "FALSE" -> false
+    | _ -> failwith "bool"
+
   let uuid s = match Uuidm.of_string s with Some u -> u | None -> failwith "uuid"
   let decimal s = Decimal.of_string s
 

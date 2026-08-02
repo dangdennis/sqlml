@@ -17,8 +17,10 @@ module Interval = Interval
 (** {1 Connections} *)
 
 type conn = Driver.t
-(** An open connection. Obtained from a driver, e.g. [Sqlml_pg.connect] or
-    [Sqlml_caqti.Pool.use]. *)
+
+val close : conn -> unit
+(** Releases the connection. After this, using the handle is an error. For pool-borrowed
+    handles the pool owns the lifetime — do not call this inside [Pool.use]. *)
 
 (** {1 Errors} *)
 

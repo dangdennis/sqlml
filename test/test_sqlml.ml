@@ -18,6 +18,7 @@ module Fake = struct
 
   let name = "fake"
   let placeholder n = "$" ^ string_of_int n
+  let close _ = ()
 
   let query c ~sql ~params ~columns:_ =
     c.last <- (sql, params);
