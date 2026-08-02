@@ -11,6 +11,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The committed lockfile must keep building: this is what a contributor gets
+  # from a bare `dune build`. Cold it compiles the world including OCaml
+  # (~17 min); warm, the dune cache turns that into minutes. Unit tests only --
+  # the opam job below owns the live-database suite.
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/dune
+          key: dune-pkg-${{ runner.os }}-${{ hashFiles('dune.lock/**') }}
+          restore-keys: dune-pkg-${{ runner.os }}-
+
+      - name: Install libpq headers (conf-postgresql)
+        run: sudo apt-get update && sudo apt-get install -y libpq-dev
+
+      - name: Install dune (developer preview binary)
+        run: |
+          curl -fsSL https://get.dune.build/install | sh
+          echo "$HOME/.dune/bin" >> "$GITHUB_PATH"
+
+      - name: Build from dune.lock
+        run: dune build
+
+      - name: Unit tests (no database)
+        run: dune test
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
