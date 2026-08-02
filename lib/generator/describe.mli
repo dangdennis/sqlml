@@ -46,3 +46,38 @@ val describe_all : Pq.conn -> Parse.t list -> (described list, Diag.t) result
 
 val report : described -> string
 (** Human-readable report for one query, as printed by [sqlml describe]. *)
+
+(** {1 Constructors}
+
+    The records are [private] so pipeline code cannot fabricate them; these are for the
+    two other legitimate producers — tests, and the offline snapshot cache, which
+    deserializes exactly this data. *)
+
+val v_column :
+  name:string ->
+  type_oid:int ->
+  type_name:string ->
+  elem_type_name:string option ->
+  table:string option ->
+  table_oid:int ->
+  table_col:int ->
+  nullable:bool ->
+  enum_labels:string list ->
+  column
+
+val v_param :
+  index:int ->
+  pname:string ->
+  ptype_oid:int ->
+  ptype_name:string ->
+  pelem_type_name:string option ->
+  penum_labels:string list ->
+  pnullable:bool ->
+  param
+
+val v_described :
+  query:Parse.t ->
+  params:param list ->
+  columns:column list ->
+  model_table:string option ->
+  described

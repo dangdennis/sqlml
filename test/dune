@@ -1,3 +1,14 @@
 (tests
- (names test_sqlml test_generated test_sqlstate test_interval test_parse)
- (libraries sqlml sqlml_gen generated ptime uuidm decimal yojson))
+ (names
+  test_sqlml
+  test_generated
+  test_sqlstate
+  test_interval
+  test_parse
+  test_value_row
+  test_typemap
+  test_config
+  test_run
+  test_resolve_render)
+ (deps render_golden.ml.expected render_golden.mli.expected)
+ (libraries sqlml sqlml_gen generated ptime uuidm decimal yojson unix))

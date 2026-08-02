@@ -14,6 +14,14 @@ val sql_files : string -> (string list, Diag.t) result
     skipped. *)
 
 val parse_all : string list -> (Parse.t list, Diag.t) result
+
+val check_unique_names : Parse.t list -> (unit, Diag.t) result
+(** Rejects two queries whose names snake_case to the same OCaml identifier; all queries
+    generate into one module. *)
+
+val first_difference : path:string -> expected:string -> actual:string -> drift option
+(** The line-level diff a drift report points at. *)
+
 val build : queries_dir:string -> conninfo:string -> (built, Diag.t) result
 
 val describe :

@@ -392,3 +392,27 @@ let report d =
     d.columns;
   Buffer.add_char b '\n';
   Buffer.contents b
+
+(* Explicit constructors: the records are private so pipeline code cannot
+   fabricate them, but two legitimate producers exist besides the server --
+   tests, and the offline snapshot cache, which deserializes exactly these. *)
+let v_column ~name ~type_oid ~type_name ~elem_type_name ~table ~table_oid ~table_col
+    ~nullable ~enum_labels =
+  {
+    name;
+    type_oid;
+    type_name;
+    elem_type_name;
+    table;
+    table_oid;
+    table_col;
+    nullable;
+    enum_labels;
+  }
+
+let v_param ~index ~pname ~ptype_oid ~ptype_name ~pelem_type_name ~penum_labels ~pnullable
+    =
+  { index; pname; ptype_oid; ptype_name; pelem_type_name; penum_labels; pnullable }
+
+let v_described ~query ~params ~columns ~model_table =
+  { query; params; columns; model_table }

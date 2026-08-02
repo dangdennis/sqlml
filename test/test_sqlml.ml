@@ -137,4 +137,121 @@ let () =
   | Ok n -> check "exec returns count" (n = 1)
   | Error _ -> check "exec returns count" false);
 
+  (* ---------- SQL sequences the runtime emits ----------
+
+     A recording driver captures every statement, so transaction nesting,
+     retry, and cursor plumbing are asserted as the exact SQL conversation --
+     no database required. *)
+  let module Rec = struct
+    type conn = {
+      mutable log : string list;
+      (* fail the next statement with this prefix, once *)
+      mutable fail_on : (string * Sqlml.Driver.error) option;
+    }
+
+    let close _ = ()
+
+    let starts_with p s =
+      String.length s >= String.length p && String.sub s 0 (String.length p) = p
+
+    let take c sql =
+      c.log <- sql :: c.log;
+      match c.fail_on with
+      | Some (prefix, e) when starts_with prefix sql ->
+          c.fail_on <- None;
+          Some e
+      | _ -> None
+
+    let query c ~sql ~params:_ ~columns:_ =
+      match take c sql with Some e -> Error e | None -> Ok []
+
+    let exec c ~sql ~params:_ = match take c sql with Some e -> Error e | None -> Ok 1
+  end in
+  let fresh () = { Rec.log = []; fail_on = None } in
+  let conn_of c = Sqlml.Driver.make (module Rec) c in
+  let log c = List.rev c.Rec.log in
+  let starts_with p s =
+    String.length s >= String.length p && String.sub s 0 (String.length p) = p
+  in
+
+  (* plain transaction: BEGIN, body, COMMIT *)
+  let c = fresh () in
+  let conn = conn_of c in
+  ignore
+    (Sqlml.transaction conn (fun tx -> Sqlml.exec (module Delete_user) tx { id = 1 }));
+  check "transaction sequence"
+    (log c = [ "BEGIN"; "DELETE FROM users WHERE id = $1"; "COMMIT" ]);
+
+  (* error body: ROLLBACK, not COMMIT *)
+  let c = fresh () in
+  ignore (Sqlml.transaction (conn_of c) (fun _ -> Error (Sqlml.Error.Connect "no")));
+  check "error rolls back" (log c = [ "BEGIN"; "ROLLBACK" ]);
+
+  (* nesting: savepoints with depth-derived names *)
+  let c = fresh () in
+  let conn = conn_of c in
+  ignore
+    (Sqlml.transaction conn (fun tx ->
+         Sqlml.transaction tx (fun _ -> Error (Sqlml.Error.Connect "inner")) |> ignore;
+         Ok ()));
+  check "savepoint sequence"
+    (log c
+    = [
+        "BEGIN";
+        "SAVEPOINT sqlml_savepoint_1";
+        "ROLLBACK TO SAVEPOINT sqlml_savepoint_1";
+        "COMMIT";
+      ]);
+
+  (* isolation prefix *)
+  let c = fresh () in
+  ignore (Sqlml.transaction ~isolation:`Serializable (conn_of c) (fun _ -> Ok ()));
+  check "isolation in BEGIN" (log c = [ "BEGIN ISOLATION LEVEL SERIALIZABLE"; "COMMIT" ]);
+
+  (* retry: a 40001 body failure re-runs the whole transaction once *)
+  let c = fresh () in
+  let serialization =
+    Sqlml.Driver.error ~sqlstate:(Sqlml.Sqlstate.of_string "40001") "boom"
+  in
+  c.Rec.fail_on <- Some ("DELETE", serialization);
+  (match
+     Sqlml.transaction ~retry:2 (conn_of c) (fun tx ->
+         Sqlml.exec (module Delete_user) tx { id = 1 })
+   with
+  | Ok _ ->
+      check "retry re-runs after 40001"
+        (log c
+        = [
+            "BEGIN";
+            "DELETE FROM users WHERE id = $1";
+            "ROLLBACK";
+            "BEGIN";
+            "DELETE FROM users WHERE id = $1";
+            "COMMIT";
+          ])
+  | Error _ -> check "retry re-runs after 40001" false);
+
+  (* fetch_fold: DECLARE/FETCH/CLOSE inside a transaction, and the cursor name
+     is deterministic -- two calls, identical statements, no cache growth *)
+  let run_fold c =
+    ignore
+      (Sqlml.fetch_fold
+         (module Search_users)
+         ~batch:7 (conn_of c) { pattern = "%"; limit = 1 } ~init:0
+         ~f:(fun n _ -> n + 1))
+  in
+  let c = fresh () in
+  run_fold c;
+  let first = log c in
+  check "cursor conversation shape"
+    (match first with
+    | [ "BEGIN"; declare; fetch; close_; "COMMIT" ] ->
+        starts_with "DECLARE sqlml_cursor_d1 NO SCROLL CURSOR FOR" declare
+        && fetch = "FETCH FORWARD 7 FROM sqlml_cursor_d1"
+        && close_ = "CLOSE sqlml_cursor_d1"
+    | _ -> false);
+  let c2 = fresh () in
+  run_fold c2;
+  check "cursor names are deterministic across calls" (log c2 = first);
+
   print_endline "all good"
