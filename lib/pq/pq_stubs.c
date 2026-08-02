@@ -18,16 +18,27 @@
 #include <caml/alloc.h>
 #include <libpq-fe.h>
 #include <stdlib.h>
+#include <string.h>
+#include <caml/threads.h>
+#include <caml/fail.h>
 
 #define Conn_val(v) ((PGconn *)Nativeint_val(v))
 #define Res_val(v) ((PGresult *)Nativeint_val(v))
 
 /* ---------- connection ---------- */
 
+/* Blocking libpq calls run with the OCaml runtime lock released, so a slow
+ * server does not stall every other domain. Anything read from the OCaml heap
+ * must be copied to C memory first: String_val pointers are invalid once the
+ * lock is released and the GC may move the blocks. */
 CAMLprim value sqlml_pq_connect(value conninfo)
 {
   CAMLparam1(conninfo);
-  PGconn *c = PQconnectdb(String_val(conninfo));
+  char *ci = caml_stat_strdup(String_val(conninfo));
+  caml_release_runtime_system();
+  PGconn *c = PQconnectdb(ci);
+  caml_acquire_runtime_system();
+  caml_stat_free(ci);
   CAMLreturn(caml_copy_nativeint((intnat)c));
 }
 
@@ -61,21 +72,38 @@ CAMLprim value sqlml_pq_finish(value conn)
 CAMLprim value sqlml_pq_prepare(value conn, value name, value sql)
 {
   CAMLparam3(conn, name, sql);
-  PGresult *r = PQprepare(Conn_val(conn), String_val(name), String_val(sql), 0, NULL);
+  PGconn *c = Conn_val(conn);
+  char *nm = caml_stat_strdup(String_val(name));
+  char *q = caml_stat_strdup(String_val(sql));
+  caml_release_runtime_system();
+  PGresult *r = PQprepare(c, nm, q, 0, NULL);
+  caml_acquire_runtime_system();
+  caml_stat_free(nm);
+  caml_stat_free(q);
   CAMLreturn(caml_copy_nativeint((intnat)r));
 }
 
 CAMLprim value sqlml_pq_describe_prepared(value conn, value name)
 {
   CAMLparam2(conn, name);
-  PGresult *r = PQdescribePrepared(Conn_val(conn), String_val(name));
+  PGconn *c = Conn_val(conn);
+  char *nm = caml_stat_strdup(String_val(name));
+  caml_release_runtime_system();
+  PGresult *r = PQdescribePrepared(c, nm);
+  caml_acquire_runtime_system();
+  caml_stat_free(nm);
   CAMLreturn(caml_copy_nativeint((intnat)r));
 }
 
 CAMLprim value sqlml_pq_exec(value conn, value sql)
 {
   CAMLparam2(conn, sql);
-  PGresult *r = PQexec(Conn_val(conn), String_val(sql));
+  PGconn *c = Conn_val(conn);
+  char *q = caml_stat_strdup(String_val(sql));
+  caml_release_runtime_system();
+  PGresult *r = PQexec(c, q);
+  caml_acquire_runtime_system();
+  caml_stat_free(q);
   CAMLreturn(caml_copy_nativeint((intnat)r));
 }
 
@@ -174,6 +202,40 @@ CAMLprim value sqlml_pq_getisnull(value res, value row, value col)
 
 /* ---------- executing ---------- */
 
+/* Copy a string-option array of parameters out of the OCaml heap, so the
+ * runtime lock can be released while libpq blocks. A parameter containing NUL
+ * is rejected (returns -1): libpq would silently truncate it at the NUL,
+ * sending a different value than the caller supplied. */
+static int copy_params(value params, int n, char ***out)
+{
+  char **vals = NULL;
+  if (n > 0) vals = (char **)caml_stat_alloc((size_t)n * sizeof(char *));
+  for (int i = 0; i < n; i++) {
+    value p = Field(params, i);
+    if (Is_block(p)) {
+      value sv = Field(p, 0);
+      size_t len = caml_string_length(sv);
+      if (memchr(String_val(sv), 0, len) != NULL) {
+        for (int j = 0; j < i; j++)
+          if (vals[j]) caml_stat_free(vals[j]);
+        if (vals) caml_stat_free(vals);
+        return -1;
+      }
+      vals[i] = caml_stat_strdup(String_val(sv));
+    }
+    else vals[i] = NULL;
+  }
+  *out = vals;
+  return 0;
+}
+
+static void free_params(char **vals, int n)
+{
+  for (int i = 0; i < n; i++)
+    if (vals && vals[i]) caml_stat_free(vals[i]);
+  if (vals) caml_stat_free(vals);
+}
+
 /* [params] is a string option array; None becomes SQL NULL.
  *
  * paramTypes is NULL on purpose, so the server infers each parameter's type
@@ -183,16 +245,17 @@ CAMLprim value sqlml_pq_getisnull(value res, value row, value col)
 CAMLprim value sqlml_pq_exec_params(value conn, value sql, value params)
 {
   CAMLparam3(conn, sql, params);
+  PGconn *c = Conn_val(conn);
   int n = (int)Wosize_val(params);
-  const char **vals = NULL;
-  if (n > 0) vals = (const char **)caml_stat_alloc((size_t)n * sizeof(char *));
-  for (int i = 0; i < n; i++) {
-    value p = Field(params, i);
-    vals[i] = Is_block(p) ? String_val(Field(p, 0)) : NULL;
-  }
-  PGresult *r =
-      PQexecParams(Conn_val(conn), String_val(sql), n, NULL, vals, NULL, NULL, 0);
-  if (vals) caml_stat_free((void *)vals);
+  char **vals = NULL;
+  if (copy_params(params, n, &vals) != 0)
+    caml_invalid_argument("sqlml: parameter contains a NUL byte");
+  char *q = caml_stat_strdup(String_val(sql));
+  caml_release_runtime_system();
+  PGresult *r = PQexecParams(c, q, n, NULL, (const char *const *)vals, NULL, NULL, 0);
+  caml_acquire_runtime_system();
+  caml_stat_free(q);
+  free_params(vals, n);
   CAMLreturn(caml_copy_nativeint((intnat)r));
 }
 
@@ -201,7 +264,7 @@ CAMLprim value sqlml_pq_cmd_tuples(value res)
 {
   CAMLparam1(res);
   const char *s = PQcmdTuples(Res_val(res));
-  CAMLreturn(Val_int((s == NULL || *s == '\0') ? 0 : atoi(s)));
+  CAMLreturn(Val_long((s == NULL || *s == '\0') ? 0 : strtoll(s, NULL, 10)));
 }
 
 /* PQresultErrorField, for the diagnostic fields that let a caller act on a
@@ -221,15 +284,16 @@ CAMLprim value sqlml_pq_result_error_field(value res, value field)
 CAMLprim value sqlml_pq_exec_prepared(value conn, value name, value params)
 {
   CAMLparam3(conn, name, params);
+  PGconn *c = Conn_val(conn);
   int n = (int)Wosize_val(params);
-  const char **vals = NULL;
-  if (n > 0) vals = (const char **)caml_stat_alloc((size_t)n * sizeof(char *));
-  for (int i = 0; i < n; i++) {
-    value p = Field(params, i);
-    vals[i] = Is_block(p) ? String_val(Field(p, 0)) : NULL;
-  }
-  PGresult *r =
-      PQexecPrepared(Conn_val(conn), String_val(name), n, vals, NULL, NULL, 0);
-  if (vals) caml_stat_free((void *)vals);
+  char **vals = NULL;
+  if (copy_params(params, n, &vals) != 0)
+    caml_invalid_argument("sqlml: parameter contains a NUL byte");
+  char *nm = caml_stat_strdup(String_val(name));
+  caml_release_runtime_system();
+  PGresult *r = PQexecPrepared(c, nm, n, (const char *const *)vals, NULL, NULL, 0);
+  caml_acquire_runtime_system();
+  caml_stat_free(nm);
+  free_params(vals, n);
   CAMLreturn(caml_copy_nativeint((intnat)r));
 }
