@@ -107,6 +107,16 @@ module Raw = struct
 
   let close (module Db : Caqti_eio.CONNECTION) = Db.disconnect ()
 
+  (* Caqti's request model has no raw COPY-stream surface; a clear error beats
+     a slow row-at-a-time emulation that would silently change the semantics
+     (COPY is all-or-nothing in one round-trip). Bulk loads use the libpq
+     driver. *)
+  let copy _ ~sql:_ ~rows:_ =
+    Error
+      (Sqlml.Driver.error
+         "COPY is not supported by the Caqti driver; run bulk loads over a Sqlml_pg \
+          (libpq) connection")
+
   let query (module Db : Caqti_eio.CONNECTION) ~sql ~params ~columns =
     let (Arg (at, mk)) = arg_type (List.length params) in
     let (Row (rt, get)) = row_type columns in

@@ -71,3 +71,9 @@ val cmd_tuples : res -> int
 
 val query : conn -> string -> (string array list, diag) result
 (** A catalog query returning rows as string arrays; NULL becomes [""]. *)
+
+val copy_from : conn -> sql:string -> rows:string list -> (int, diag) result
+(** The whole [COPY ... FROM STDIN] conversation: enter copy-in mode, stream the
+    pre-escaped text lines (no trailing newline), end, and drain every pending result so
+    the connection stays usable even when the server aborts mid-stream. Returns rows
+    written. *)

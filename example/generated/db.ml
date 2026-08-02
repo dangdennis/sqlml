@@ -76,6 +76,7 @@ type get_booking_row = {
 }
 
 type has_meta_key_row = { id : Uuidm.t }
+type count_users_by_org_row = { n : int }
 
 module Count_users_by_status = struct
   type params = unit
@@ -611,3 +612,65 @@ let has_meta_key conn ~key =
   Sqlml.fetch_all (module Has_meta_key) conn { Has_meta_key.key }
 
 let has_meta_key_exn conn ~key = Sqlml.or_raise (has_meta_key conn ~key)
+
+module Bulk_add_users = struct
+  type params = {
+    id : Uuidm.t;
+    organization_id : Uuidm.t;
+    email : string;
+    display_name : string option;
+    status : user_status;
+    balance : Decimal.t;
+  }
+
+  let name = "BulkAddUsers"
+
+  let copy_sql =
+    "COPY users (id, organization_id, email, display_name, status, balance) FROM STDIN"
+
+  let encode (p : params) =
+    [
+      Sqlml.Value.of_uuid p.id;
+      Sqlml.Value.of_uuid p.organization_id;
+      Sqlml.Value.of_string p.email;
+      (Sqlml.Value.of_option Sqlml.Value.of_string) p.display_name;
+      user_status_to_value p.status;
+      Sqlml.Value.of_decimal p.balance;
+    ]
+
+  let cardinality = Sqlml.Query.Copy
+end
+
+let bulk_add_users conn rows = Sqlml.copy (module Bulk_add_users) conn rows
+let bulk_add_users_exn conn rows = Sqlml.or_raise (bulk_add_users conn rows)
+
+module Count_users_by_org = struct
+  type params = { org : Uuidm.t }
+  type row = count_users_by_org_row
+
+  let name = "CountUsersByOrg"
+  let sql (_ : params) = "SELECT count(*) AS \"n!\" FROM users WHERE organization_id = $1"
+  let encode (p : params) = [ Sqlml.Value.of_uuid p.org ]
+  let decode r : count_users_by_org_row = { n = Sqlml.Row.int r 0 }
+  let columns = 1
+  let cardinality = Sqlml.Query.One_strict
+end
+
+let count_users_by_org conn ~org =
+  Sqlml.fetch_one_strict (module Count_users_by_org) conn { Count_users_by_org.org }
+
+let count_users_by_org_exn conn ~org = Sqlml.or_raise (count_users_by_org conn ~org)
+
+module Delete_users_by_org = struct
+  type params = { org : Uuidm.t }
+
+  let name = "DeleteUsersByOrg"
+  let sql (_ : params) = "DELETE FROM users WHERE organization_id = $1"
+  let encode (p : params) = [ Sqlml.Value.of_uuid p.org ]
+  let cardinality = Sqlml.Query.Exec
+end
+
+let delete_users_by_org conn ~org =
+  Sqlml.exec (module Delete_users_by_org) conn { Delete_users_by_org.org }
+
+let delete_users_by_org_exn conn ~org = Sqlml.or_raise (delete_users_by_org conn ~org)

@@ -4,6 +4,58 @@
   "schema_hash": "06bd61ac901b5dceb887923f7347437f1b8100a1b2ef60013fa0601eb9784110",
   "queries": [
     {
+      "name": "BulkAddUsers",
+      "variants": [
+        "33b2a5b448e4580430b79133f451bb50e38b3ee6aef4c886275787997566f047"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "organization_id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "email",
+          "ptype_name": "text",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        },
+        {
+          "pname": "display_name",
+          "ptype_name": "text",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": true
+        },
+        {
+          "pname": "status",
+          "ptype_name": "user_status",
+          "pelem_type_name": null,
+          "penum_labels": [ "active", "banned" ],
+          "pnullable": false
+        },
+        {
+          "pname": "balance",
+          "ptype_name": "numeric",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [],
+      "model_table": null
+    },
+    {
       "name": "CountPostsByUser",
       "variants": [
         "fa7d579b65a2c1c1a7faa60d7d68779b2f0485d65eeab814b3293b931d4a54d0"
@@ -30,6 +82,33 @@
         },
         {
           "name": "post_count",
+          "type_name": "int8",
+          "elem_type_name": null,
+          "table": null,
+          "table_col": 0,
+          "nullable": false,
+          "enum_labels": []
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "CountUsersByOrg",
+      "variants": [
+        "1cb44420199626aabe2471b2ead126cbe70a9a946dc7fbec4a27b63cae479f3a"
+      ],
+      "params": [
+        {
+          "pname": "org",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "n",
           "type_name": "int8",
           "elem_type_name": null,
           "table": null,
@@ -128,6 +207,23 @@
       "params": [
         {
           "pname": "id",
+          "ptype_name": "uuid",
+          "pelem_type_name": null,
+          "penum_labels": [],
+          "pnullable": false
+        }
+      ],
+      "columns": [],
+      "model_table": null
+    },
+    {
+      "name": "DeleteUsersByOrg",
+      "variants": [
+        "ad2b9a543286219c2a50f030f7d118b946c50a026fd1ab7f481f43a1f502aeb2"
+      ],
+      "params": [
+        {
+          "pname": "org",
           "ptype_name": "uuid",
           "pelem_type_name": null,
           "penum_labels": [],

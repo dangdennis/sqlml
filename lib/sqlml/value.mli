@@ -52,3 +52,12 @@ end
 val to_pg_text : t -> string option
 (** The wire encoding both drivers share: PostgreSQL text format, [None] for SQL NULL. One
     home so the drivers cannot drift apart on rendering. *)
+
+(** COPY text-format cells: its own quoting regime, distinct from array literals.
+    Backslash-escapes for tab, newline, carriage return and friends; [\N] for NULL. *)
+module Copy : sig
+  val cell : t -> string
+
+  val line : t list -> string
+  (** Tab-joined cells; no trailing newline — the driver owns line framing. *)
+end

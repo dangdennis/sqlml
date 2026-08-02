@@ -13,11 +13,13 @@ type origin =
 
 type resolved = private {
   d : Describe.described;
-  row_type : string option;  (** [None] for [:exec] *)
+  row_type : string option;  (** [None] for [:exec] and [:copy] *)
   row_origin : origin option;
   cols : field list;  (** SELECT order — decoders index by position *)
   type_fields : field list;  (** order the record type is declared in *)
   ps : field list;
+  copy : (string * string list) option;
+      (** [:copy] target table and column list, validated against the verified INSERT *)
 }
 
 val resolve : Config.t -> Describe.described -> (resolved, Diag.t) result

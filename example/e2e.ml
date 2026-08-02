@@ -492,6 +492,57 @@ let test_date_time_interval conn =
       check "negative interval round-trip" false);
   ()
 
+(* COPY: 10k rows in one round-trip, with cells chosen to break naive escaping
+   -- embedded tabs, newlines, backslashes, \N-lookalikes, and NULLs. *)
+let test_copy conn =
+  let org = uuid "c0b70000-0000-4000-8000-000000000001" in
+  let cid i = uuid (Printf.sprintf "c0b70000-0000-4000-8000-%012d" (i + 1)) in
+  ignore (Db.delete_users_by_org_exn conn ~org);
+  let total = 10_000 in
+  let name_of i =
+    match i with
+    | 0 -> Some "tab\there newline\nhere back\\slash"
+    | 1 -> None
+    | 2 -> Some "\\N is data, not NULL"
+    | 3 -> Some "cr\rhere"
+    | i -> Some (Printf.sprintf "user %d" i)
+  in
+  let rows =
+    List.init total (fun i ->
+        {
+          Db.Bulk_add_users.id = cid i;
+          organization_id = org;
+          email = Printf.sprintf "u%d@e2e-copy.example.com" i;
+          display_name = name_of i;
+          status = (if i mod 7 = 0 then Db.Banned else Db.Active);
+          balance = Decimal.of_string (Printf.sprintf "%d.25" (i mod 1000));
+        })
+  in
+  (match Db.bulk_add_users conn rows with
+  | Ok n -> check "copy reports every row written" (n = total)
+  | Error e ->
+      print_endline (Sqlml.Error.to_string e);
+      check "copy reports every row written" false);
+  check "count agrees" ((Db.count_users_by_org_exn conn ~org).Db.n = total);
+  (* the hostile cells round-trip byte-for-byte *)
+  (match Db.get_user_exn conn ~id:(cid 0) with
+  | Some u -> check "tab/newline/backslash round-trip" (u.Db.name = name_of 0)
+  | None -> check "tab/newline/backslash round-trip" false);
+  (match Db.get_user_exn conn ~id:(cid 1) with
+  | Some u -> check "NULL cell -> None" (u.Db.name = None)
+  | None -> check "NULL cell -> None" false);
+  (match Db.get_user_exn conn ~id:(cid 2) with
+  | Some u -> check "literal backslash-N stays data" (u.Db.name = name_of 2)
+  | None -> check "literal backslash-N stays data" false);
+  (* all-or-nothing: one duplicate id aborts the whole load, and the
+     connection remains usable *)
+  (match Db.bulk_add_users conn [ List.hd rows ] with
+  | Error e -> check "bad copy aborts with sqlstate" (Sqlml.Error.sqlstate e <> None)
+  | Ok _ -> check "bad copy aborts with sqlstate" false);
+  check "count unchanged after failed copy"
+    ((Db.count_users_by_org_exn conn ~org).Db.n = total);
+  ignore (Db.delete_users_by_org_exn conn ~org)
+
 let sections =
   [
     ("crud", test_crud);
@@ -505,6 +556,7 @@ let sections =
     ("statement_cache_vs_rollback", test_statement_cache_vs_rollback);
     ("optional_blocks", test_optional_blocks);
     ("date_time_interval", test_date_time_interval);
+    ("copy", test_copy);
   ]
 
 (* Each section runs under a try so one crash still lets the rest report; a

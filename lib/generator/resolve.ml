@@ -100,11 +100,12 @@ let describe_origin = function
 
 type resolved = {
   d : Describe.described;
-  row_type : string option (* None for :exec *);
+  row_type : string option (* None for :exec and :copy *);
   row_origin : origin option;
   cols : field list (* SELECT order -- decoders index by position *);
   type_fields : field list (* order the record type is declared in *);
   ps : field list;
+  copy : (string * string list) option (* :copy target table and columns *);
 }
 
 let row_type_name cfg (d : Describe.described) =
@@ -116,12 +117,136 @@ let row_type_name cfg (d : Describe.described) =
       ( Parse.to_snake d.Describe.query.Parse.name ^ "_row",
         From_query d.Describe.query.Parse.name )
 
+(* The one SQL shape :copy accepts, extracted syntactically AFTER the whole
+   statement was verified by Describe: INSERT INTO t (c1..cn) VALUES ($1..$n),
+   one plain placeholder per column, nothing else. The COPY statement is built
+   from this column list at codegen, so no SQL is ever assembled at runtime
+   that Describe has not blessed the types of. *)
+let copy_target (q : Parse.t) =
+  let fail fmt =
+    Printf.ksprintf
+      (fun m ->
+        Error
+          (Diag.v ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
+             (m ^ " -- a :copy query must be exactly INSERT INTO t (col, ...) VALUES "
+            ^ "(:param, ...), one parameter per column")))
+      fmt
+  in
+  let sql = q.Parse.sql in
+  let n = String.length sql in
+  let pos = ref 0 in
+  let skip_ws () =
+    while
+      !pos < n && match sql.[!pos] with ' ' | '\t' | '\n' | '\r' -> true | _ -> false
+    do
+      incr pos
+    done
+  in
+  let word () =
+    skip_ws ();
+    let s = !pos in
+    while
+      !pos < n
+      &&
+      match sql.[!pos] with
+      | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '.' | '"' -> true
+      | _ -> false
+    do
+      incr pos
+    done;
+    String.sub sql s (!pos - s)
+  in
+  let expect_char c what =
+    skip_ws ();
+    if !pos < n && sql.[!pos] = c then begin
+      incr pos;
+      Ok ()
+    end
+    else fail "expected %s" what
+  in
+  let expect_kw kw =
+    let w = word () in
+    if String.lowercase_ascii w = kw then Ok ()
+    else fail "expected %s" (String.uppercase_ascii kw)
+  in
+  let* () = expect_kw "insert" in
+  let* () = expect_kw "into" in
+  let table = word () in
+  let* () = if table = "" then fail "expected a table name" else Ok () in
+  let* () = expect_char '(' "( before the column list" in
+  let rec columns acc =
+    let c = word () in
+    if c = "" then fail "expected a column name"
+    else begin
+      skip_ws ();
+      if !pos < n && sql.[!pos] = ',' then begin
+        incr pos;
+        columns (c :: acc)
+      end
+      else
+        let* () = expect_char ')' ") after the column list" in
+        Ok (List.rev (c :: acc))
+    end
+  in
+  let* cols = columns [] in
+  let* () = expect_kw "values" in
+  let* () = expect_char '(' "( before the VALUES list" in
+  let rec placeholders k =
+    let w = word () in
+    if w <> "" then fail "column %d of VALUES must be a plain parameter, got %S" k w
+    else
+      let* () = expect_char '$' (Printf.sprintf "$%d" k) in
+      let s = !pos in
+      while !pos < n && match sql.[!pos] with '0' .. '9' -> true | _ -> false do
+        incr pos
+      done;
+      let num = String.sub sql s (!pos - s) in
+      if num <> string_of_int k then fail "parameters must appear in order ($%d next)" k
+      else begin
+        skip_ws ();
+        if !pos < n && sql.[!pos] = ',' then begin
+          incr pos;
+          placeholders (k + 1)
+        end
+        else
+          let* () = expect_char ')' ") after the VALUES list" in
+          Ok k
+      end
+  in
+  let* nvals = placeholders 1 in
+  skip_ws ();
+  let* () =
+    if !pos <> n then fail "unexpected trailing SQL (RETURNING is not supported)"
+    else Ok ()
+  in
+  if List.length cols <> nvals then
+    fail "%d columns but %d parameters" (List.length cols) nvals
+  else if nvals <> List.length q.Parse.params then
+    fail "each parameter must be used exactly once"
+  else Ok (table, cols)
+
 let resolve cfg (d : Describe.described) =
   let q = d.Describe.query in
   let* cols = map_result (resolve_column cfg q) d.Describe.columns in
   let* ps = map_result (resolve_param cfg q) d.Describe.params in
+  let* copy =
+    match q.Parse.cardinality with
+    | Parse.Copy ->
+        let* () =
+          if d.Describe.columns <> [] then
+            Error
+              (Diag.v ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
+                 "a :copy query must not return rows (drop the RETURNING clause)")
+          else Ok ()
+        in
+        let* t = copy_target q in
+        Ok (Some t)
+    | _ -> Ok None
+  in
   let row_type =
-    match q.Parse.cardinality with Parse.Exec -> None | _ -> Some (row_type_name cfg d)
+    match q.Parse.cardinality with
+    | Parse.Exec | Parse.Copy -> None
+    | _ -> Some (row_type_name cfg d)
   in
   let row_origin = Option.map snd row_type in
   let row_type = Option.map fst row_type in
@@ -133,7 +258,7 @@ let resolve cfg (d : Describe.described) =
   let type_fields =
     if shared then List.stable_sort (fun a b -> compare a.ord b.ord) cols else cols
   in
-  Ok { d; row_type; row_origin; cols; type_fields; ps }
+  Ok { d; row_type; row_origin; cols; type_fields; ps; copy }
 
 (* ---------- collecting shared pieces ---------- *)
 

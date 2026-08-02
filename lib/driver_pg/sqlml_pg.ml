@@ -88,6 +88,13 @@ module Raw = struct
     match Pq.check (run conn sql params) with
     | Error e -> Error (of_diag e)
     | Ok r -> Pq.with_result r (fun r -> Ok (Pq.cmd_tuples r))
+
+  (* COPY skips the prepared-statement cache: COPY cannot be prepared, and the
+     conversation is one shot by nature. *)
+  let copy conn ~sql ~rows =
+    match Pq.copy_from conn.raw ~sql ~rows with
+    | Ok n -> Ok n
+    | Error e -> Error (of_diag e)
 end
 
 (* ---------- connecting ---------- *)

@@ -10,6 +10,11 @@ let check what b =
 
 open Sqlml_gen
 
+let contains hay needle =
+  let nh = String.length hay and nn = String.length needle in
+  let rec go i = i + nn <= nh && (String.sub hay i nn = needle || go (i + 1)) in
+  go 0
+
 let parse s =
   match Parse.of_string ~file:"t.sql" s with
   | Ok [ q ] -> q
@@ -123,5 +128,22 @@ let () =
       check "two queries parse" (a.Parse.name = "A" && b.Parse.name = "B");
       check "trailing semicolon stripped" (a.Parse.sql = "SELECT 1")
   | _ -> check "two queries parse" false);
+
+  (* ---------- :copy ---------- *)
+  (match
+     Parse.of_string ~file:"t.sql"
+       "-- name: BulkAdd :copy\nINSERT INTO t (a, b) VALUES (:a, :b)"
+   with
+  | Ok [ q ] ->
+      check ":copy parses" (q.Parse.cardinality = Parse.Copy);
+      check ":copy rewrites params" (List.length q.Parse.params = 2)
+  | _ -> check ":copy parses" false);
+  (match
+     Parse.of_string ~file:"t.sql"
+       "-- name: BulkAdd :copy\nINSERT INTO t (a, b) VALUES (:a, :b) /*? , :c */"
+   with
+  | Error d ->
+      check ":copy rejects optional blocks" (contains (Diag.to_string d) "optional")
+  | Ok _ -> check ":copy rejects optional blocks" false);
 
   print_endline "all good"

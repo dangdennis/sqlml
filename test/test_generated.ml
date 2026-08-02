@@ -62,6 +62,8 @@ module Stub = struct
   let exec c ~sql:_ ~params =
     c.last_params <- params;
     Ok 1
+
+  let copy _ ~sql:_ ~rows = Ok (List.length rows)
 end
 
 let state = { Stub.last_params = [] }

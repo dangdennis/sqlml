@@ -136,4 +136,43 @@ let () =
       compare_golden "ml" ml;
       check "doc comment still closes exactly once" (not (contains ml "terminator: *)")));
 
+  (* ---------- :copy resolves to a COPY statement, or fails naming the shape ---------- *)
+  let copy_q sql =
+    described sql
+      ~params:[ param 1 "a" "uuid"; param 2 "b" "text" ~nullable:true ]
+      ~columns:[]
+  in
+  (match
+     resolve (copy_q "-- name: BulkAdd :copy\nINSERT INTO t (a, b) VALUES (:a, :b)")
+   with
+  | Error d -> check ("copy resolves: " ^ Diag.to_string d) false
+  | Ok r -> (
+      check "copy target extracted" (r.Resolve.copy = Some ("t", [ "a"; "b" ]));
+      match
+        Emit.generate ~src:"s"
+          [ copy_q "-- name: BulkAdd :copy\nINSERT INTO t (a, b) VALUES (:a, :b)" ]
+      with
+      | Error d -> check ("copy renders: " ^ Diag.to_string d) false
+      | Ok (mli, ml) ->
+          check "copy_sql is built from the verified columns"
+            (contains ml "COPY t (a, b) FROM STDIN");
+          check "copy wrapper takes a row list" (contains mli "params list");
+          check "copy module satisfies COPY" (contains mli "Sqlml.Query.COPY")));
+  (match resolve (copy_q "-- name: BulkAdd :copy\nUPDATE t SET a = :a WHERE b = :b") with
+  | Error d -> check "non-INSERT copy rejected" (contains (Diag.to_string d) "INSERT")
+  | Ok _ -> check "non-INSERT copy rejected" false);
+  (match
+     resolve
+       (described "-- name: BulkAdd :copy\nINSERT INTO t (a) VALUES (:a) RETURNING a"
+          ~params:[ param 1 "a" "uuid" ]
+          ~columns:[ col "a" "uuid" ])
+   with
+  | Error d -> check "RETURNING rejected" (contains (Diag.to_string d) "RETURNING")
+  | Ok _ -> check "RETURNING rejected" false);
+  (match
+     resolve (copy_q "-- name: BulkAdd :copy\nINSERT INTO t (a, b, c) VALUES (:a, :b)")
+   with
+  | Error _ -> check "column/parameter mismatch rejected" true
+  | Ok _ -> check "column/parameter mismatch rejected" false);
+
   print_endline "all good"

@@ -125,6 +125,7 @@ backstop.
 | `-- name: GetUser :one!` | exactly one row; returned unwrapped, absence is an error |
 | `-- name: ListUsers :many` | zero or more rows; returns `list` |
 | `-- name: DeleteUser :exec` | no rows; returns the affected count |
+| `-- name: BulkAddUsers :copy` | bulk insert via `COPY FROM STDIN`; takes a row list |
 | `:id` | named parameter, becomes a labelled argument |
 | `:name?` | nullable parameter, becomes an optional argument |
 | `AS "total!"` | force a column non-null |
@@ -132,6 +133,13 @@ backstop.
 
 Cardinality is enforced by the type system: passing a `:one` query to
 `fetch_all` does not compile.
+
+A `:copy` query must be exactly `INSERT INTO t (col, ...) VALUES (:param, ...)`
+— the INSERT is what Describe verifies the types of, and the generator builds
+the `COPY t (col, ...) FROM STDIN` statement from that verified column list.
+The generated function takes the whole row list and loads it in one round-trip;
+any bad row aborts the entire load server-side. COPY runs on the libpq driver;
+the Caqti driver returns a clear error pointing there.
 
 Nullability is read from the catalog, so most columns need no annotation. The
 overrides exist for the two cases the catalog gets wrong: a `NOT NULL` column

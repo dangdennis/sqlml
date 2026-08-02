@@ -34,6 +34,10 @@ module type S = sig
     (Value.t array list, error) result
 
   val exec : conn -> sql:string -> params:Value.t list -> (int, error) result
+
+  (* [rows] are pre-escaped COPY text lines (Value.Copy.line), no trailing
+     newline. The runtime owns escaping so drivers cannot drift on it. *)
+  val copy : conn -> sql:string -> rows:string list -> (int, error) result
   val close : conn -> unit
   (* Releases the underlying handle. For pooled connections this is the
      driver's choice of return-to-pool or no-op; the pool owns the lifetime. *)

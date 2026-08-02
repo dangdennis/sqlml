@@ -376,7 +376,7 @@ val all : t list
 
     Codes outside the table still occur: extensions define their own, and PL/pgSQL
     [RAISE ... USING ERRCODE] accepts arbitrary five-character codes. Those classify as
-    {!condition} [Other] while {!class_} still resolves from the first two characters.
+    {!val:condition} [Other] while {!class_} still resolves from the first two characters.
     Client-side failures — a dropped socket, a malformed URI — carry no SQLSTATE at all
     and surface as [Error.Connect] or an [Execute] with [sqlstate = None]; the predicates
     here return [false] for them. *)

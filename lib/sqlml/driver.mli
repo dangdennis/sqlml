@@ -39,6 +39,12 @@ module type S = sig
       need it. *)
 
   val exec : conn -> sql:string -> params:Value.t list -> (int, error) result
+
+  val copy : conn -> sql:string -> rows:string list -> (int, error) result
+  (** Bulk load: [sql] is a [COPY ... FROM STDIN] statement, [rows] are pre-escaped COPY
+      text lines ({!Value.Copy.line}, no trailing newline). Returns rows written. A driver
+      with no COPY support returns a clear [error] rather than failing obscurely. *)
+
   val close : conn -> unit
 end
 

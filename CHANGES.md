@@ -29,6 +29,10 @@ determines the parameter and result types.
   diagnostic fields.
 - `sqlml check` byte-compares regenerated output for CI; generated code is
   formatted with the pinned ocamlformat.
+- `:copy` queries: a verified `INSERT` shape generates a bulk loader over
+  `COPY ... FROM STDIN` — a whole row list in one round-trip, with the
+  runtime owning COPY text escaping (libpq driver only; the Caqti driver
+  returns a clear error).
 - `sqlml snapshot` caches the database's answers in a committed
   `sqlml.snapshot.json`, and `generate`/`check` accept `--offline`: no
   database needed, with loud staleness errors keyed on every SQL variant's

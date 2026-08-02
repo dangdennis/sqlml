@@ -175,6 +175,36 @@ let () =
       incr failures;
       Printf.printf "jsonb ?  : %s\n" (Sqlml.Error.to_string e));
 
+  (* COPY is libpq-only by design; the Caqti driver must say so clearly
+     rather than fail obscurely *)
+  (match
+     Sqlml_caqti.Pool.use pool (fun c ->
+         bulk_add_users c
+           [
+             {
+               Bulk_add_users.id = uuid "0b000000-0000-4000-8000-0000000000c1";
+               organization_id = org;
+               email = "copy@web.example.com";
+               display_name = None;
+               status = Active;
+               balance = Decimal.of_string "0.00";
+             };
+           ])
+   with
+  | Error e ->
+      let m = Sqlml.Error.to_string e in
+      let says_libpq =
+        let rec go i =
+          i + 5 <= String.length m && (String.sub m i 5 = "libpq" || go (i + 1))
+        in
+        go 0
+      in
+      if not says_libpq then incr failures;
+      Printf.printf "copy     : unsupported here, error names the fix (%b)\n" says_libpq
+  | Ok _ ->
+      incr failures;
+      print_endline "copy     : unexpectedly succeeded on Caqti");
+
   List.iter
     (fun (id, _, _) -> ignore (Sqlml_caqti.Pool.use pool (fun c -> delete_user c ~id)))
     people;

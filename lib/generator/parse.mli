@@ -10,7 +10,7 @@
     index, a bounded block count, block parameters disjoint and never nullable,
     [2^nblocks] variants). *)
 
-type cardinality = One | One_strict | Many | Exec
+type cardinality = One | One_strict | Many | Exec | Copy
 type param = private { pname : string; index : int; nullable : bool }
 
 type dyn = private {

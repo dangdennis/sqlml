@@ -60,7 +60,7 @@ let result_type r =
   | Parse.One -> Printf.sprintf "%s option" (Option.get r.row_type)
   | Parse.One_strict -> Option.get r.row_type
   | Parse.Many -> Printf.sprintf "%s list" (Option.get r.row_type)
-  | Parse.Exec -> "int"
+  | Parse.Exec | Parse.Copy -> "int"
 
 let runner r =
   match r.d.Describe.query.Parse.cardinality with
@@ -68,6 +68,7 @@ let runner r =
   | Parse.One_strict -> "Sqlml.fetch_one_strict"
   | Parse.Many -> "Sqlml.fetch_all"
   | Parse.Exec -> "Sqlml.exec"
+  | Parse.Copy -> "Sqlml.copy"
 
 let query_sig r =
   match r.d.Describe.query.Parse.cardinality with
@@ -75,6 +76,7 @@ let query_sig r =
   | Parse.One_strict -> "Sqlml.Query.ONE_STRICT"
   | Parse.Many -> "Sqlml.Query.MANY"
   | Parse.Exec -> "Sqlml.Query.EXEC"
+  | Parse.Copy -> "Sqlml.Query.COPY"
 
 let fn_name r = Parse.to_snake r.d.Describe.query.Parse.name
 let mod_name r = r.d.Describe.query.Parse.module_name
@@ -100,18 +102,30 @@ let emit_signature b r =
         (query_sig r) row
   | None -> bprintf b "  include %s with type params := params\n" (query_sig r));
   bprintf b "end\n\n";
-  let mandatory, optional = split_args r.ps in
-  let args = List.map arg_sig (mandatory @ optional) in
-  let args = if optional = [] then args else args @ [ "unit" ] in
-  let chain = String.concat " -> " ("Sqlml.conn" :: args) in
-  emit_doc b q;
-  bprintf b "val %s : %s -> (%s, Sqlml.Error.t) result\n\n" (fn_name r) chain
-    (result_type r);
-  bprintf b
-    "(** Raising {!%s}.\n\
-    \    @raise Sqlml.Sql_error on connection, execution or decode failure. *)\n"
-    (fn_name r);
-  bprintf b "val %s_exn : %s -> %s\n\n" (fn_name r) chain (result_type r)
+  match r.copy with
+  | Some _ ->
+      (* one COPY round-trip per call: the argument is the whole row list *)
+      emit_doc b q;
+      bprintf b "val %s : Sqlml.conn -> %s.params list -> (int, Sqlml.Error.t) result\n\n"
+        (fn_name r) m;
+      bprintf b
+        "(** Raising {!%s}.\n\
+        \    @raise Sqlml.Sql_error on connection or execution failure. *)\n"
+        (fn_name r);
+      bprintf b "val %s_exn : Sqlml.conn -> %s.params list -> int\n\n" (fn_name r) m
+  | None ->
+      let mandatory, optional = split_args r.ps in
+      let args = List.map arg_sig (mandatory @ optional) in
+      let args = if optional = [] then args else args @ [ "unit" ] in
+      let chain = String.concat " -> " ("Sqlml.conn" :: args) in
+      emit_doc b q;
+      bprintf b "val %s : %s -> (%s, Sqlml.Error.t) result\n\n" (fn_name r) chain
+        (result_type r);
+      bprintf b
+        "(** Raising {!%s}.\n\
+        \    @raise Sqlml.Sql_error on connection, execution or decode failure. *)\n"
+        (fn_name r);
+      bprintf b "val %s_exn : %s -> %s\n\n" (fn_name r) chain (result_type r)
 
 let emit_implementation b r =
   let m = mod_name r in
@@ -130,7 +144,13 @@ let emit_implementation b r =
   end;
   (match r.row_type with Some row -> bprintf b "  type row = %s\n" row | None -> ());
   bprintf b "\n  let name = %S\n" q.Parse.name;
+  (match r.copy with
+  | Some (table, cols) ->
+      bprintf b "  let copy_sql = %S\n\n"
+        (Printf.sprintf "COPY %s (%s) FROM STDIN" table (String.concat ", " cols))
+  | None -> ());
   (match q.Parse.dynamic with
+  | None when r.copy <> None -> ()
   | None -> bprintf b "  let sql (_ : params) = %S\n\n" q.Parse.sql
   | Some d ->
       (* one pre-verified SQL text per inclusion combination, indexed by which
@@ -217,22 +237,29 @@ let emit_implementation b r =
     | Parse.One -> "Sqlml.Query.One"
     | Parse.One_strict -> "Sqlml.Query.One_strict"
     | Parse.Many -> "Sqlml.Query.Many"
-    | Parse.Exec -> "Sqlml.Query.Exec");
+    | Parse.Exec -> "Sqlml.Query.Exec"
+    | Parse.Copy -> "Sqlml.Query.Copy");
   bprintf b "end\n\n";
-  let mandatory, optional = split_args r.ps in
-  let all = mandatory @ optional in
-  let uses =
-    match all with [] -> "" | _ -> " " ^ String.concat " " (List.map arg_use all)
-  in
-  let tail = if optional = [] then "" else " ()" in
-  let param_value =
-    if r.ps = [] then "()"
-    else "{ " ^ m ^ "." ^ String.concat "; " (List.map (fun f -> f.fname) r.ps) ^ " }"
-  in
-  bprintf b "let %s conn%s%s = %s (module %s) conn %s\n" (fn_name r) uses tail (runner r)
-    m param_value;
-  bprintf b "let %s_exn conn%s%s = Sqlml.or_raise (%s conn%s%s)\n\n" (fn_name r) uses tail
-    (fn_name r) uses tail
+  match r.copy with
+  | Some _ ->
+      bprintf b "let %s conn rows = Sqlml.copy (module %s) conn rows\n" (fn_name r) m;
+      bprintf b "let %s_exn conn rows = Sqlml.or_raise (%s conn rows)\n\n" (fn_name r)
+        (fn_name r)
+  | None ->
+      let mandatory, optional = split_args r.ps in
+      let all = mandatory @ optional in
+      let uses =
+        match all with [] -> "" | _ -> " " ^ String.concat " " (List.map arg_use all)
+      in
+      let tail = if optional = [] then "" else " ()" in
+      let param_value =
+        if r.ps = [] then "()"
+        else "{ " ^ m ^ "." ^ String.concat "; " (List.map (fun f -> f.fname) r.ps) ^ " }"
+      in
+      bprintf b "let %s conn%s%s = %s (module %s) conn %s\n" (fn_name r) uses tail
+        (runner r) m param_value;
+      bprintf b "let %s_exn conn%s%s = Sqlml.or_raise (%s conn%s%s)\n\n" (fn_name r) uses
+        tail (fn_name r) uses tail
 
 let header src =
   Printf.sprintf

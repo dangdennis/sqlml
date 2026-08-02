@@ -91,3 +91,15 @@ SELECT on_date, at_time, duration FROM bookings WHERE id = :id;
 -- The jsonb ? operator: a regression sentinel for drivers that must not
 -- re-parse SQL through their own placeholder grammar.
 SELECT id FROM tag_sets WHERE meta ? :key;
+
+-- name: BulkAddUsers :copy
+-- Bulk-load users in one COPY round-trip. All-or-nothing: any bad row
+-- aborts the whole load server-side.
+INSERT INTO users (id, organization_id, email, display_name, status, balance)
+VALUES (:id, :organization_id, :email, :display_name?, :status, :balance);
+
+-- name: CountUsersByOrg :one!
+SELECT count(*) AS "n!" FROM users WHERE organization_id = :org;
+
+-- name: DeleteUsersByOrg :exec
+DELETE FROM users WHERE organization_id = :org;

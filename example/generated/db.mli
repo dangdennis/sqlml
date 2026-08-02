@@ -62,6 +62,7 @@ type get_booking_row = {
 }
 
 type has_meta_key_row = { id : Uuidm.t }
+type count_users_by_org_row = { n : int }
 
 module Count_users_by_status : sig
   type params = unit
@@ -377,4 +378,54 @@ val has_meta_key :
 
 val has_meta_key_exn : Sqlml.conn -> key:string -> has_meta_key_row list
 (** Raising {!has_meta_key}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
+module Bulk_add_users : sig
+  type params = {
+    id : Uuidm.t;
+    organization_id : Uuidm.t;
+    email : string;
+    display_name : string option;
+    status : user_status;
+    balance : Decimal.t;
+  }
+
+  include Sqlml.Query.COPY with type params := params
+end
+
+val bulk_add_users :
+  Sqlml.conn -> Bulk_add_users.params list -> (int, Sqlml.Error.t) result
+(** Bulk-load users in one COPY round-trip. All-or-nothing: any bad row aborts the whole
+    load server-side. *)
+
+val bulk_add_users_exn : Sqlml.conn -> Bulk_add_users.params list -> int
+(** Raising {!bulk_add_users}.
+    @raise Sqlml.Sql_error on connection or execution failure. *)
+
+module Count_users_by_org : sig
+  type params = { org : Uuidm.t }
+
+  include
+    Sqlml.Query.ONE_STRICT
+      with type params := params
+       and type row = count_users_by_org_row
+end
+
+val count_users_by_org :
+  Sqlml.conn -> org:Uuidm.t -> (count_users_by_org_row, Sqlml.Error.t) result
+
+val count_users_by_org_exn : Sqlml.conn -> org:Uuidm.t -> count_users_by_org_row
+(** Raising {!count_users_by_org}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
+module Delete_users_by_org : sig
+  type params = { org : Uuidm.t }
+
+  include Sqlml.Query.EXEC with type params := params
+end
+
+val delete_users_by_org : Sqlml.conn -> org:Uuidm.t -> (int, Sqlml.Error.t) result
+
+val delete_users_by_org_exn : Sqlml.conn -> org:Uuidm.t -> int
+(** Raising {!delete_users_by_org}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)

@@ -107,6 +107,52 @@ CAMLprim value sqlml_pq_exec(value conn, value sql)
   CAMLreturn(caml_copy_nativeint((intnat)r));
 }
 
+/* ---------- COPY FROM STDIN ---------- */
+
+/* Data is copied to C memory by length (COPY lines are text, but being
+   length-clean here costs nothing), and the runtime lock is released around
+   the blocking calls like every other libpq entry point. */
+CAMLprim value sqlml_pq_put_copy_data(value conn, value data)
+{
+  CAMLparam2(conn, data);
+  PGconn *c = Conn_val(conn);
+  size_t len = caml_string_length(data);
+  char *buf = caml_stat_alloc(len);
+  memcpy(buf, Bytes_val(data), len);
+  caml_release_runtime_system();
+  int rc = PQputCopyData(c, buf, (int)len);
+  caml_acquire_runtime_system();
+  caml_stat_free(buf);
+  CAMLreturn(Val_int(rc));
+}
+
+CAMLprim value sqlml_pq_put_copy_end(value conn)
+{
+  CAMLparam1(conn);
+  PGconn *c = Conn_val(conn);
+  caml_release_runtime_system();
+  int rc = PQputCopyEnd(c, NULL);
+  caml_acquire_runtime_system();
+  CAMLreturn(Val_int(rc));
+}
+
+/* NULL maps to 0; the OCaml side tests with result_is_null before use. */
+CAMLprim value sqlml_pq_get_result(value conn)
+{
+  CAMLparam1(conn);
+  PGconn *c = Conn_val(conn);
+  caml_release_runtime_system();
+  PGresult *r = PQgetResult(c);
+  caml_acquire_runtime_system();
+  CAMLreturn(caml_copy_nativeint((intnat)r));
+}
+
+CAMLprim value sqlml_pq_result_is_null(value res)
+{
+  CAMLparam1(res);
+  CAMLreturn(Val_bool(Nativeint_val(res) == 0));
+}
+
 /* ---------- results ---------- */
 
 /* Maps to ExecStatusType; 1 = COMMAND_OK, 2 = TUPLES_OK. */

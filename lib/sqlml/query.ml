@@ -5,12 +5,14 @@ type one = |
 type one_strict = |
 type many = |
 type exec = |
+type copy = |
 
 type _ card =
   | One : one card
   | One_strict : one_strict card
   | Many : many card
   | Exec : exec card
+  | Copy : copy card
 
 module type BASE = sig
   type params
@@ -66,4 +68,19 @@ module type EXEC = sig
   include BASE
 
   val cardinality : exec card
+end
+
+(* -- name: BulkAddUsers :copy *)
+module type COPY = sig
+  type params
+  (* one row of the COPY stream; the name matches BASE so the renderer and
+     config keys treat copy rows like any other params record *)
+
+  val name : string
+
+  (* "COPY t (a, b) FROM STDIN" -- built at codegen from the column list the
+     verified INSERT names, never assembled at runtime *)
+  val copy_sql : string
+  val encode : params -> Value.t list
+  val cardinality : copy card
 end

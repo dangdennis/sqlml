@@ -109,6 +109,15 @@ let exec (module Q : Query.EXEC) (conn : conn) (p : Q.params) : (int, Error.t) r
       | Ok n -> Ok n
       | Error (d : Driver.error) -> Error (execute_error ~query:Q.name ~sql:(Q.sql p) d))
 
+let copy (module Q : Query.COPY) (conn : conn) (rows : Q.params list) :
+    (int, Error.t) result =
+  match conn with
+  | Driver.Conn ((module D), c, _) -> (
+      let lines = List.map (fun r -> Value.Copy.line (Q.encode r)) rows in
+      match D.copy c ~sql:Q.copy_sql ~rows:lines with
+      | Ok n -> Ok n
+      | Error (d : Driver.error) -> Error (execute_error ~query:Q.name ~sql:Q.copy_sql d))
+
 let fetch_one_strict (module Q : Query.ONE_STRICT) (conn : conn) (p : Q.params) :
     (Q.row, Error.t) result =
   match

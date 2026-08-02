@@ -45,10 +45,15 @@ external ftablecol : res -> int -> int = "sqlml_pq_ftablecol"
 external ntuples : res -> int = "sqlml_pq_ntuples"
 external getvalue : res -> int -> int -> string = "sqlml_pq_getvalue"
 external getisnull : res -> int -> int -> bool = "sqlml_pq_getisnull"
+external put_copy_data : conn -> string -> int = "sqlml_pq_put_copy_data"
+external put_copy_end : conn -> int = "sqlml_pq_put_copy_end"
+external get_result : conn -> res = "sqlml_pq_get_result"
+external result_is_null : res -> bool = "sqlml_pq_result_is_null"
 
 (* ExecStatusType *)
 let command_ok = 1
 let tuples_ok = 2
+let copy_in = 4
 let ok status = status = command_ok || status = tuples_ok
 
 (* Run [f] on a result and always clear it, even if [f] raises. *)
@@ -94,6 +99,63 @@ let query conn sql =
                 Array.init cols (fun j -> if getisnull r i j then "" else getvalue r i j))
           in
           Ok rows)
+
+(* A whole COPY ... FROM STDIN conversation: enter copy-in mode, stream the
+   pre-escaped lines, end, and drain every pending result -- the connection is
+   left usable even when the server aborts mid-stream. *)
+let client_diag conn message_if_empty =
+  let m = match String.trim (error_message conn) with "" -> message_if_empty | m -> m in
+  {
+    message = m;
+    sqlstate = None;
+    detail = None;
+    hint = None;
+    constraint_name = None;
+    table_name = None;
+    column_name = None;
+  }
+
+let copy_from conn ~sql ~rows =
+  let r = exec conn sql in
+  if result_status r <> copy_in then (
+    match check r with
+    | Error d -> Error d
+    | Ok r ->
+        clear r;
+        Error (client_diag conn "statement did not enter COPY mode"))
+  else begin
+    clear r;
+    let rec send = function
+      | [] -> true
+      | line :: tl -> put_copy_data conn (line ^ "\n") = 1 && send tl
+    in
+    let sent = send rows in
+    let ended = put_copy_end conn = 1 in
+    (* Always drain: PQgetResult until NULL, or the connection is wedged. The
+       server's verdict (an error names the offending line) beats any
+       client-side failure we saw while streaming. *)
+    let rec drain acc =
+      let r = get_result conn in
+      if result_is_null r then acc
+      else
+        let this =
+          match check r with
+          | Ok r -> with_result r (fun r -> Ok (cmd_tuples r))
+          | Error d -> Error d
+        in
+        let acc =
+          match (this, acc) with
+          | Error _, _ -> this
+          | Ok _, Error _ -> acc
+          | Ok _, _ -> this
+        in
+        drain acc
+    in
+    match drain (Ok 0) with
+    | Error d -> Error d
+    | Ok n when sent && ended -> Ok n
+    | Ok _ -> Error (client_diag conn "COPY data could not be sent")
+  end
 
 (* Connection string from the conventional environment variables. Shared by the
    generator and the libpq driver so the env policy cannot drift; the Caqti

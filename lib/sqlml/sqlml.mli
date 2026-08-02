@@ -47,6 +47,11 @@ val fetch_one_strict :
 (** For queries declared [:one!]: the row is returned directly, and its absence is an
     [Error.Cardinality] rather than [None]. *)
 
+val copy : (module Q : Query.COPY) -> conn -> Q.params list -> (int, Error.t) result
+(** For queries declared [:copy]: bulk-loads the rows through [COPY ... FROM STDIN] in one
+    round-trip and returns the count written. All-or-nothing: any bad row aborts the whole
+    COPY server-side. *)
+
 (** {1 Streaming}
 
     For results too large to hold as a list. Rows are read in batches from a server-side

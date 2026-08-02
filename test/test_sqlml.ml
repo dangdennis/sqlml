@@ -25,6 +25,10 @@ module Fake = struct
   let exec c ~sql ~params =
     c.last <- (sql, params);
     Ok (List.length c.rows)
+
+  let copy c ~sql ~rows =
+    c.last <- (sql, []);
+    Ok (List.length rows)
 end
 
 let conn rows = Sqlml.Driver.make (module Fake) { Fake.last = ("", []); rows }
@@ -166,6 +170,14 @@ let () =
       match take c sql with Some e -> Error e | None -> Ok []
 
     let exec c ~sql ~params:_ = match take c sql with Some e -> Error e | None -> Ok 1
+
+    (* the statement, then each pre-escaped line, land in the same log *)
+    let copy c ~sql ~rows =
+      match take c sql with
+      | Some e -> Error e
+      | None ->
+          List.iter (fun r -> c.log <- r :: c.log) rows;
+          Ok (List.length rows)
   end in
   let fresh () = { Rec.log = []; fail_on = None } in
   let conn_of c = Sqlml.Driver.make (module Rec) c in
@@ -253,5 +265,33 @@ let () =
   let c2 = fresh () in
   run_fold c2;
   check "cursor names are deterministic across calls" (log c2 = first);
+
+  (* copy: the driver receives the codegen-built statement and one pre-escaped
+     line per row, in order *)
+  let module Bulk = struct
+    type params = { a : int; note : string option }
+
+    let name = "Bulk"
+    let copy_sql = "COPY t (a, note) FROM STDIN"
+
+    let encode { a; note } =
+      [
+        Sqlml.Value.of_int a;
+        (match note with None -> Sqlml.Value.Null | Some s -> Sqlml.Value.of_string s);
+      ]
+
+    let cardinality = Sqlml.Query.Copy
+  end in
+  let c = fresh () in
+  (match
+     Sqlml.copy
+       (module Bulk)
+       (conn_of c)
+       [ { Bulk.a = 1; note = Some "tab\there" }; { Bulk.a = 2; note = None } ]
+   with
+  | Ok n -> check "copy returns the row count" (n = 2)
+  | Error _ -> check "copy returns the row count" false);
+  check "copy conversation: statement then escaped lines"
+    (log c = [ "COPY t (a, note) FROM STDIN"; "1\ttab\\there"; "2\t\\N" ]);
 
   print_endline "all good"

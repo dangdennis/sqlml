@@ -174,6 +174,18 @@ PostgreSQL cannot use an index on a predicate it cannot see through — and
 typed fragments, which are a query builder in disguise. The variant cap is
 what keeps the combinatorial approach honest.
 
+## 7. Bulk COPY inserts — done
+
+`-- name: BulkAddUsers :copy` over a plain `INSERT INTO t (cols) VALUES
+(:params)`. The INSERT is what Describe verifies (keeping the
+everything-is-verified invariant); the generator builds `COPY t (cols) FROM
+STDIN` from the verified column list, and the generated function takes a row
+list and streams it in one round-trip through `PQputCopyData`. The runtime owns
+COPY text escaping (`Value.Copy`, a third quoting regime after scalars and
+array literals). libpq-only: the Caqti driver returns a clear error naming the
+fix, because Caqti has no raw COPY surface and a row-at-a-time emulation would
+silently lose COPY's all-or-nothing semantics.
+
 ## Not planned
 
 - SQLite. No Describe equivalent, so inference needs a wholly different

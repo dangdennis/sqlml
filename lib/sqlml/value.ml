@@ -111,3 +111,30 @@ let to_pg_text = function
       Buffer.add_string b "\\x";
       String.iter (fun c -> Buffer.add_string b (Printf.sprintf "%02x" (Char.code c))) s;
       Some (Buffer.contents b)
+
+(* COPY text format is its own quoting regime, distinct from array literals:
+   backslash-escapes for the control characters the format itself uses as
+   structure, and \N for NULL. The server unescapes before type input, so a
+   cell is [to_pg_text] first, escaped second. *)
+module Copy = struct
+  let cell v =
+    match to_pg_text v with
+    | None -> "\\N"
+    | Some s ->
+        let b = Buffer.create (String.length s + 8) in
+        String.iter
+          (fun c ->
+            match c with
+            | '\\' -> Buffer.add_string b "\\\\"
+            | '\b' -> Buffer.add_string b "\\b"
+            | '\012' -> Buffer.add_string b "\\f"
+            | '\n' -> Buffer.add_string b "\\n"
+            | '\r' -> Buffer.add_string b "\\r"
+            | '\t' -> Buffer.add_string b "\\t"
+            | '\011' -> Buffer.add_string b "\\v"
+            | c -> Buffer.add_char b c)
+          s;
+        Buffer.contents b
+
+  let line vs = String.concat "\t" (List.map cell vs)
+end

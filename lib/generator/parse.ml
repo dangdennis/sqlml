@@ -8,7 +8,7 @@
    strips it. That means we never rewrite the user's SELECT list, and a marker
    can never be confused with SQL syntax. *)
 
-type cardinality = One | One_strict | Many | Exec
+type cardinality = One | One_strict | Many | Exec | Copy
 
 (* [nullable] comes from a trailing ? on the placeholder -- [:display_name?].
    It cannot be inferred: Postgres's Describe reports parameter types but says
@@ -376,6 +376,7 @@ let cardinality_of_string = function
   | "one!" -> Some One_strict
   | "many" -> Some Many
   | "exec" -> Some Exec
+  | "copy" -> Some Copy
   | _ -> None
 
 (* ---------- driver ---------- *)
@@ -414,7 +415,8 @@ let of_string ~file contents =
           | Some c -> Ok c
           | None ->
               err file line
-                "unknown cardinality %S (expected :one, :one!, :many or :exec)" card
+                "unknown cardinality %S (expected :one, :one!, :many, :exec or :copy)"
+                card
         in
         let body = List.rev !body in
         (* leading comment lines directly under the header are the docstring *)
@@ -439,6 +441,13 @@ let of_string ~file contents =
           else
             let* sql, params, dyn = build_dynamic ~file ~line segs in
             Ok (sql, params, Some dyn)
+        in
+        (* every COPY row supplies every column; an optional block would make
+           the row shape vary per row, which COPY cannot express *)
+        let* () =
+          if cardinality = Copy && dynamic <> None then
+            err file line "optional /*? ... */ blocks cannot be used with :copy"
+          else Ok ()
         in
         build
           ({
@@ -472,3 +481,4 @@ let string_of_cardinality = function
   | One_strict -> "one!"
   | Many -> "many"
   | Exec -> "exec"
+  | Copy -> "copy"

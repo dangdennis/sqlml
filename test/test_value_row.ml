@@ -86,4 +86,15 @@ let () =
   check "to_pg_text octets hex"
     (Value.to_pg_text (Value.Octets "\x00\xff") = Some "\\x00ff");
 
+  (* ---------- COPY text cells: a third quoting regime, tested apart ---------- *)
+  let cell = Sqlml.Value.Copy.cell in
+  check "copy NULL is \\N" (cell Sqlml.Value.Null = "\\N");
+  check "copy tab escaped" (cell (Sqlml.Value.Text "a\tb") = "a\\tb");
+  check "copy newline escaped" (cell (Sqlml.Value.Text "a\nb") = "a\\nb");
+  check "copy cr/backslash escaped" (cell (Sqlml.Value.Text "a\rb\\c") = "a\\rb\\\\c");
+  check "copy literal N unharmed" (cell (Sqlml.Value.Text "N") = "N");
+  check "copy line joins with tabs"
+    (Sqlml.Value.Copy.line [ Sqlml.Value.Int 1; Sqlml.Value.Null; Sqlml.Value.Text "x" ]
+    = "1\t\\N\tx");
+
   print_endline "all good"
