@@ -21,6 +21,14 @@ let int r i =
       with _ -> raise (Bad { column = i; expected = "int"; got = s }))
   | v -> bad i "int" v
 
+let int64 r i =
+  match get r i with
+  | Value.Int n -> Int64.of_int n
+  | Value.Text s -> (
+      try Int64.of_string s
+      with _ -> raise (Bad { column = i; expected = "int64"; got = s }))
+  | v -> bad i "int64" v
+
 let bool r i =
   match get r i with
   | Value.Bool b -> b
@@ -30,8 +38,42 @@ let bool r i =
 
 let string r i = match get r i with Value.Text s -> s | v -> bad i "text" v
 
+let parse_octets s =
+  let n = String.length s in
+  if n >= 2 && String.sub s 0 2 = "\\x" then begin
+    if n mod 2 <> 0 then invalid_arg "bytea: odd hex length";
+    String.init
+      ((n - 2) / 2)
+      (fun i -> Char.chr (int_of_string ("0x" ^ String.sub s (2 + (2 * i)) 2)))
+  end
+  else begin
+    let b = Buffer.create n and i = ref 0 in
+    while !i < n do
+      if s.[!i] <> '\\' then (
+        Buffer.add_char b s.[!i];
+        incr i)
+      else if !i + 1 < n && s.[!i + 1] = '\\' then (
+        Buffer.add_char b '\\';
+        i := !i + 2)
+      else if !i + 3 < n then begin
+        let raw = String.sub s (!i + 1) 3 in
+        if not (String.for_all (fun c -> c >= '0' && c <= '7') raw) then
+          invalid_arg "bytea: invalid octal escape";
+        Buffer.add_char b (Char.chr (int_of_string ("0o" ^ raw)));
+        i := !i + 4
+      end
+      else invalid_arg "bytea: incomplete escape"
+    done;
+    Buffer.contents b
+  end
+
 let octets r i =
-  match get r i with Value.Octets s | Value.Text s -> s | v -> bad i "octets" v
+  match get r i with
+  | Value.Octets s -> s
+  | Value.Text s -> (
+      try parse_octets s
+      with _ -> raise (Bad { column = i; expected = "bytea"; got = s }))
+  | v -> bad i "octets" v
 
 let float r i =
   match get r i with
@@ -157,7 +199,11 @@ let custom parse r i =
   match get r i with
   | Value.Text s -> (
       try parse s
-      with _ -> raise (Bad { column = i; expected = "custom type"; got = s }))
+      with exn ->
+        raise
+          (Bad
+             { column = i; expected = "custom type: " ^ Printexc.to_string exn; got = s })
+      )
   | v -> bad i "custom type" v
 
 (* ---------- arrays ----------
@@ -171,7 +217,9 @@ module Elem = struct
   (* Element parsers operate on the raw text of one array element, unlike the
      column decoders above which index into a row. *)
   let string s = s
+  let octets = parse_octets
   let int s = int_of_string s
+  let int64 s = Int64.of_string s
   let float s = float_of_string s
 
   let bool s =

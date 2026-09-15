@@ -30,15 +30,15 @@ module Find_things : sig
   type params =
     { o : Uuidm.t
     ; e : string option
-    ; n : int
+    ; n : int64
     }
 
   include Sqlml.Query.MANY with type params := params and type row = find_things_row
 end
 
-val find_things : Sqlml.conn -> o:Uuidm.t -> n:int -> ?e:string -> unit -> (find_things_row list, Sqlml.Error.t) result
+val find_things : Sqlml.conn -> o:Uuidm.t -> n:int64 -> ?e:string -> unit -> (find_things_row list, Sqlml.Error.t) result
 
 (** Raising {!find_things}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
-val find_things_exn : Sqlml.conn -> o:Uuidm.t -> n:int -> ?e:string -> unit -> find_things_row list
+val find_things_exn : Sqlml.conn -> o:Uuidm.t -> n:int64 -> ?e:string -> unit -> find_things_row list
 

@@ -77,3 +77,5 @@ val copy_from : conn -> sql:string -> rows:string list -> (int, diag) result
     pre-escaped text lines (no trailing newline), end, and drain every pending result so
     the connection stays usable even when the server aborts mid-stream. Returns rows
     written. *)
+
+val fmod : res -> int -> int

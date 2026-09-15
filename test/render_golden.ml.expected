@@ -2,7 +2,7 @@
 
    Regenerate with: sqlml generate *)
 
-[@@@warning "-69"]
+[@@@warning "-69-30-39"]
 
 type get_thing_row =
   { id : Uuidm.t
@@ -43,7 +43,7 @@ module Find_things = struct
   type params =
     { o : Uuidm.t
     ; e : string option
-    ; n : int
+    ; n : int64
     }
   type row = find_things_row
 
@@ -63,7 +63,7 @@ module Find_things = struct
     List.concat
       [ [ Sqlml.Value.of_uuid p.o ]
       ; (match p.e with None -> [] | Some v -> [ Sqlml.Value.of_string v ])
-      ; [ Sqlml.Value.of_int p.n ]
+      ; [ Sqlml.Value.of_int64 p.n ]
       ]
 
   let decode r : find_things_row =

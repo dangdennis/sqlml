@@ -34,14 +34,14 @@ wrote lib/db/db.mli and lib/db/db.ml (3 queries from 1 file(s))
 The generated interface:
 
 ```ocaml
-type user_status = Active | Banned
+type public_user_status = Active | Banned
 
 type get_user_row =
-  { id : Uuidm.t
-  ; email : string
+  { id : Uuidm.t option
+  ; email : string option
   ; display_name : string option
-  ; status : user_status
-  ; created_at : Ptime.t
+  ; status : public_user_status option
+  ; created_at : Ptime.t option
   }
 
 val get_user : Sqlml.conn -> id:Uuidm.t -> (get_user_row option, Sqlml.Error.t) result
@@ -55,13 +55,13 @@ open Db
 
 let () =
   match get_user conn ~id with
-  | Ok (Some u) -> print_endline u.email
+  | Ok (Some u) -> print_endline (Option.value u.email ~default:"(no email)")
   | Ok None -> print_endline "not found"
   | Error e -> prerr_endline (Sqlml.Error.to_string e)
 ```
 
-`display_name` is an `option` because the column is nullable; `status` is a
-variant because the column is an enum. Neither was annotated.
+Result fields are optional by default: catalog constraints alone cannot prove
+query nullability. Enum values use schema-qualified generated variants.
 
 ## Install
 
@@ -141,16 +141,18 @@ The generated function takes the whole row list and loads it in one round-trip;
 any bad row aborts the entire load server-side. COPY runs on the libpq driver;
 the Caqti driver returns a clear error pointing there.
 
-Nullability is read from the catalog, so most columns need no annotation. The
-overrides exist for the two cases the catalog gets wrong: a `NOT NULL` column
-reached through an outer join, and a computed column with no originating table.
+Every result column defaults to `option`, including columns declared `NOT NULL`: an
+outer join can still produce NULL. `AS "total!"` is an explicit user assertion; a
+NULL then becomes a decode error. `?` explicitly retains nullable results.
+Parameter nullability remains controlled by the placeholder syntax.
 
 ## Types
 
 | PostgreSQL | OCaml |
 | --- | --- |
 | `bool` | `bool` |
-| `int2`, `int4`, `int8` | `int` |
+| `int2`, `int4` | `int` |
+| `int8` | `int64` |
 | `float4`, `float8` | `float` |
 | `numeric` | `Decimal.t` |
 | `text`, `varchar`, `char` | `string` |
@@ -158,8 +160,12 @@ reached through an outer join, and a computed column with no originating table.
 | `uuid` | `Uuidm.t` |
 | `timestamp`, `timestamptz` | `Ptime.t` |
 | `json`, `jsonb` | `Yojson.Safe.t` |
-| enum types | a variant |
-| `T[]` | `T list` |
+| enum types | a schema-prefixed variant |
+| `T[]` | `T Sqlml.Pg_array.t` |
+| domains | underlying type, or custom mapping |
+| named composites | schema-prefixed records with optional fields |
+| ranges | `T Sqlml.Range.t` |
+| multiranges | `T Sqlml.Range.t list` |
 | `date` | `Ptime.date` |
 | `time` | `Ptime.Span.t` (since midnight) |
 | `interval` | `Sqlml.Interval.t` |
@@ -176,8 +182,15 @@ SELECT id, email FROM users WHERE id = ANY(:ids);
 ```
 
 ```ocaml
-val get_users_by_ids : Sqlml.conn -> ids:Uuidm.t list -> (get_users_by_ids_row list, _) result
+val get_users_by_ids : Sqlml.conn -> ids:Uuidm.t Sqlml.Pg_array.t -> (get_users_by_ids_row list, _) result
 ```
+
+Use `Sqlml.Pg_array.of_list ids` for a conventional list. Arrays preserve NULL
+elements, dimensions, and lower bounds; `to_list` rejects values that cannot be
+represented faithfully as a plain list. Range bounds distinguish empty,
+unbounded, inclusive, and exclusive values; PostgreSQL performs canonicalization.
+Named composites can nest these containers. Anonymous `record` results require a
+cast to a named composite type.
 
 `timestamptz` decodes to the instant it names: output carries the session's
 offset, which the parser honours, so any server `TimeZone` round-trips
@@ -283,8 +296,8 @@ LIMIT :limit;
 
 ```ocaml
 val find_users :
-  Sqlml.conn -> org:Uuidm.t -> limit:int ->
-  ?email:string -> ?status:user_status -> unit ->
+  Sqlml.conn -> org:Uuidm.t -> limit:int64 ->
+  ?email:string -> ?status:public_user_status -> unit ->
   (find_users_row list, Sqlml.Error.t) result
 ```
 
@@ -351,8 +364,7 @@ applies to the output directory, so it arrives in your project's own style.
 This is not cosmetic. `check` compares byte-for-byte, so without it an editor
 that formats on save would make `check` fail forever on code you did not write.
 Formatting in the generator means `generate` and `check` agree by construction.
-If `ocamlformat` is not installed, output is emitted unformatted rather than
-failing.
+A missing or mismatched `ocamlformat` is an error.
 
 ## Development
 
@@ -367,23 +379,35 @@ DATABASE_URL=postgresql://sqlml:sqlml@127.0.0.1:55432/sqlml dune exec example/e2
 programs: `app` on a single connection, `web` on a pool, `e2e` covering the
 type mappings.
 
+### Compiler checks and migration
+
+See [the inference suite](integration/README.md) for the 1,000-case PR gate,
+10,000-case extended gate, compiled decoders, and pinned pGenie comparison.
+
+Regenerate snapshots and generated code after upgrading: version 1 snapshots are
+rejected. Result fields become optional, `int8` parameters/results become `int64`,
+and array APIs use `Sqlml.Pg_array.t`. Named database types and shared row models
+use schema-prefixed names unless renamed. Qualified configuration keys win;
+unqualified shorthands must be unambiguous. Exact column/parameter or type
+mappings replace the entire value; otherwise component mappings apply recursively.
+
 ## Limitations
 
 - PostgreSQL only. The driver boundary anticipates SQLite, but SQLite has no
   equivalent of Describe, so inference there needs a different approach.
-- Codegen needs a live database. Generated code does not.
+- Initial inference needs a live database. A current snapshot supports offline
+  codegen; generated code does not need the generator.
 - One statement per named query; no dynamic query building beyond `= ANY(...)`.
-- Nested arrays are rejected. A NULL array element is a decode error, since
-  PostgreSQL does not report whether elements are nullable.
+- Anonymous record-valued results are rejected; cast to a named composite.
+- Scalar codec limits also apply inside containers (for example, `Ptime.t` cannot
+  represent PostgreSQL timestamp infinity). Custom mappings can supply alternatives.
 - The Caqti driver reports SQLSTATE but not the constraint name, detail or
   hint; libpq reports all of them.
-- `int8` maps to `int`, which is 63-bit. Values beyond that are a decode error
-  rather than a silent truncation.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). Next up: an offline snapshot mode, so `sqlml
-check` can run without a live database, and bulk COPY inserts.
+See [ROADMAP.md](ROADMAP.md). Next: review the 0.1 public APIs, then exercise them
+in a nontrivial web application before declaring them stable.
 
 ## Prior art
 

@@ -2,67 +2,106 @@
 
    Regenerate with: sqlml generate *)
 
-type user_status = Active | Banned
+type compiler_a_status = Open | Closed
+type compiler_b_status = Open | Archived
+type public_user_status = Active | Banned
 
-val user_status_to_string : user_status -> string
+val compiler_a_status_to_string : compiler_a_status -> string
+val compiler_b_status_to_string : compiler_b_status -> string
+val public_user_status_to_string : public_user_status -> string
 
-type count_users_by_status_row = { status : user_status; n : int }
+type compiler_a_payload = {
+  label : string option;
+  states : compiler_a_status Sqlml.Pg_array.t option;
+  amount : int64 option;
+  span : int64 Sqlml.Range.t option;
+}
+
+and compiler_b_payload = { label : string option; state : compiler_b_status option }
+
+type count_users_by_status_row = { status : public_user_status option; n : int64 }
+
+type get_compiler_value_row = {
+  payload : compiler_a_payload option;
+  other : compiler_b_payload option;
+  payloads : compiler_a_payload Sqlml.Pg_array.t option;
+  matrix : int64 Sqlml.Pg_array.t option;
+  positives : int64 Sqlml.Pg_array.t option;
+  spans : int64 Sqlml.Range.t list option;
+  words : string Sqlml.Range.t option;
+}
+
+type outer_join_compiler_row = { id : int option; payload : compiler_a_payload option }
+
+type binary_containers_row = {
+  bytes : string option;
+  items : string Sqlml.Pg_array.t option;
+}
 
 type get_user_row = {
-  id : User_id.t;
-  email : string;
+  id : User_id.t option;
+  email : string option;
   name : string option;
-  status : user_status;
-  balance : Decimal.t;
-  created_at : Ptime.t;
+  status : public_user_status option;
+  balance : Decimal.t option;
+  created_at : Ptime.t option;
 }
 
-type search_users_row = { id : User_id.t; email : string; created_at : Ptime.t }
-type count_posts_by_user_row = { email : string; title : string option; post_count : int }
+type search_users_row = {
+  id : User_id.t option;
+  email : string option;
+  created_at : Ptime.t option;
+}
+
+type count_posts_by_user_row = {
+  email : string option;
+  title : string option;
+  post_count : int64;
+}
 
 type user_row = {
-  id : User_id.t;
-  organization_id : Uuidm.t;
-  email : string;
+  id : User_id.t option;
+  organization_id : Uuidm.t option;
+  email : string option;
   name : string option;
-  status : user_status;
-  balance : Decimal.t;
-  created_at : Ptime.t;
+  status : public_user_status option;
+  balance : Decimal.t option;
+  created_at : Ptime.t option;
 }
 
-type get_users_by_ids_row = { id : User_id.t; email : string }
+type get_users_by_ids_row = { id : User_id.t option; email : string option }
 
 type get_tag_set_row = {
-  tags : string list;
-  scores : int list;
-  states : user_status list;
-  meta : Yojson.Safe.t;
+  tags : string Sqlml.Pg_array.t option;
+  scores : int Sqlml.Pg_array.t option;
+  states : public_user_status Sqlml.Pg_array.t option;
+  meta : Yojson.Safe.t option;
 }
 
 type get_user_strict_row = {
-  id : User_id.t;
-  email : string;
+  id : User_id.t option;
+  email : string option;
   name : string option;
-  status : user_status;
-  balance : Decimal.t;
-  created_at : Ptime.t;
+  status : public_user_status option;
+  balance : Decimal.t option;
+  created_at : Ptime.t option;
 }
 
 type find_users_row = {
-  id : User_id.t;
-  email : string;
-  status : user_status;
-  balance : Decimal.t;
+  id : User_id.t option;
+  email : string option;
+  status : public_user_status option;
+  balance : Decimal.t option;
 }
 
 type get_booking_row = {
-  on_date : Ptime.date;
-  at_time : Ptime.Span.t;
-  duration : Sqlml.Interval.t;
+  on_date : Ptime.date option;
+  at_time : Ptime.Span.t option;
+  duration : Sqlml.Interval.t option;
 }
 
-type has_meta_key_row = { id : Uuidm.t }
-type count_users_by_org_row = { n : int }
+type has_meta_key_row = { id : Uuidm.t option }
+type count_users_by_org_row = { n : int64 }
 
 module Count_users_by_status : sig
   type params = unit
@@ -79,6 +118,120 @@ val count_users_by_status_exn : Sqlml.conn -> count_users_by_status_row list
 (** Raising {!count_users_by_status}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
 
+module Put_compiler_value : sig
+  type params = {
+    id : int;
+    payload : compiler_a_payload option;
+    other : compiler_b_payload option;
+    payloads : compiler_a_payload Sqlml.Pg_array.t;
+    matrix : int64 Sqlml.Pg_array.t;
+    positives : int64 Sqlml.Pg_array.t;
+    spans : int64 Sqlml.Range.t list;
+    words : string Sqlml.Range.t;
+  }
+
+  include Sqlml.Query.EXEC with type params := params
+end
+
+val put_compiler_value :
+  Sqlml.conn ->
+  id:int ->
+  payloads:compiler_a_payload Sqlml.Pg_array.t ->
+  matrix:int64 Sqlml.Pg_array.t ->
+  positives:int64 Sqlml.Pg_array.t ->
+  spans:int64 Sqlml.Range.t list ->
+  words:string Sqlml.Range.t ->
+  ?payload:compiler_a_payload ->
+  ?other:compiler_b_payload ->
+  unit ->
+  (int, Sqlml.Error.t) result
+
+val put_compiler_value_exn :
+  Sqlml.conn ->
+  id:int ->
+  payloads:compiler_a_payload Sqlml.Pg_array.t ->
+  matrix:int64 Sqlml.Pg_array.t ->
+  positives:int64 Sqlml.Pg_array.t ->
+  spans:int64 Sqlml.Range.t list ->
+  words:string Sqlml.Range.t ->
+  ?payload:compiler_a_payload ->
+  ?other:compiler_b_payload ->
+  unit ->
+  int
+(** Raising {!put_compiler_value}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
+module Get_compiler_value : sig
+  type params = { id : int }
+
+  include
+    Sqlml.Query.ONE_STRICT
+      with type params := params
+       and type row = get_compiler_value_row
+end
+
+val get_compiler_value :
+  Sqlml.conn -> id:int -> (get_compiler_value_row, Sqlml.Error.t) result
+
+val get_compiler_value_exn : Sqlml.conn -> id:int -> get_compiler_value_row
+(** Raising {!get_compiler_value}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
+module Outer_join_compiler : sig
+  type params = unit
+
+  include
+    Sqlml.Query.ONE_STRICT
+      with type params := params
+       and type row = outer_join_compiler_row
+end
+
+val outer_join_compiler : Sqlml.conn -> (outer_join_compiler_row, Sqlml.Error.t) result
+
+val outer_join_compiler_exn : Sqlml.conn -> outer_join_compiler_row
+(** Raising {!outer_join_compiler}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
+module Copy_compiler_value : sig
+  type params = {
+    id : int;
+    payload : compiler_a_payload option;
+    other : compiler_b_payload option;
+    payloads : compiler_a_payload Sqlml.Pg_array.t;
+    matrix : int64 Sqlml.Pg_array.t;
+    positives : int64 Sqlml.Pg_array.t;
+    spans : int64 Sqlml.Range.t list;
+    words : string Sqlml.Range.t;
+  }
+
+  include Sqlml.Query.COPY with type params := params
+end
+
+val copy_compiler_value :
+  Sqlml.conn -> Copy_compiler_value.params list -> (int, Sqlml.Error.t) result
+
+val copy_compiler_value_exn : Sqlml.conn -> Copy_compiler_value.params list -> int
+(** Raising {!copy_compiler_value}.
+    @raise Sqlml.Sql_error on connection or execution failure. *)
+
+module Binary_containers : sig
+  type params = { bytes : string; items : string Sqlml.Pg_array.t }
+
+  include
+    Sqlml.Query.ONE_STRICT with type params := params and type row = binary_containers_row
+end
+
+val binary_containers :
+  Sqlml.conn ->
+  bytes:string ->
+  items:string Sqlml.Pg_array.t ->
+  (binary_containers_row, Sqlml.Error.t) result
+
+val binary_containers_exn :
+  Sqlml.conn -> bytes:string -> items:string Sqlml.Pg_array.t -> binary_containers_row
+(** Raising {!binary_containers}.
+    @raise Sqlml.Sql_error on connection, execution or decode failure. *)
+
 module Get_user : sig
   type params = { id : Uuidm.t }
 
@@ -93,7 +246,7 @@ val get_user_exn : Sqlml.conn -> id:Uuidm.t -> get_user_row option
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
 
 module Search_users : sig
-  type params = { organization_id : Uuidm.t; email_pattern : string; limit : int }
+  type params = { organization_id : Uuidm.t; email_pattern : string; limit : int64 }
 
   include Sqlml.Query.MANY with type params := params and type row = search_users_row
 end
@@ -102,7 +255,7 @@ val search_users :
   Sqlml.conn ->
   organization_id:Uuidm.t ->
   email_pattern:string ->
-  limit:int ->
+  limit:int64 ->
   (search_users_row list, Sqlml.Error.t) result
 (** Users in an organization whose email matches a pattern, newest first. *)
 
@@ -110,7 +263,7 @@ val search_users_exn :
   Sqlml.conn ->
   organization_id:Uuidm.t ->
   email_pattern:string ->
-  limit:int ->
+  limit:int64 ->
   search_users_row list
 (** Raising {!search_users}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
@@ -179,7 +332,7 @@ module Create_user : sig
     organization_id : Uuidm.t;
     email : string;
     display_name : string option;
-    status : user_status;
+    status : public_user_status;
     balance : Decimal.t;
   }
 
@@ -191,7 +344,7 @@ val create_user :
   id:Uuidm.t ->
   organization_id:Uuidm.t ->
   email:string ->
-  status:user_status ->
+  status:public_user_status ->
   balance:Decimal.t ->
   ?display_name:string ->
   unit ->
@@ -203,7 +356,7 @@ val create_user_exn :
   id:Uuidm.t ->
   organization_id:Uuidm.t ->
   email:string ->
-  status:user_status ->
+  status:public_user_status ->
   balance:Decimal.t ->
   ?display_name:string ->
   unit ->
@@ -212,16 +365,19 @@ val create_user_exn :
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
 
 module Get_users_by_ids : sig
-  type params = { ids : Uuidm.t list }
+  type params = { ids : Uuidm.t Sqlml.Pg_array.t }
 
   include Sqlml.Query.MANY with type params := params and type row = get_users_by_ids_row
 end
 
 val get_users_by_ids :
-  Sqlml.conn -> ids:Uuidm.t list -> (get_users_by_ids_row list, Sqlml.Error.t) result
+  Sqlml.conn ->
+  ids:Uuidm.t Sqlml.Pg_array.t ->
+  (get_users_by_ids_row list, Sqlml.Error.t) result
 (** An array parameter: = ANY(...) is how you write a dynamic IN list. *)
 
-val get_users_by_ids_exn : Sqlml.conn -> ids:Uuidm.t list -> get_users_by_ids_row list
+val get_users_by_ids_exn :
+  Sqlml.conn -> ids:Uuidm.t Sqlml.Pg_array.t -> get_users_by_ids_row list
 (** Raising {!get_users_by_ids}.
     @raise Sqlml.Sql_error on connection, execution or decode failure. *)
 
@@ -229,9 +385,9 @@ module Put_tag_set : sig
   type params = {
     id : Uuidm.t;
     owner : Uuidm.t;
-    tags : string list;
-    scores : int list;
-    states : user_status list;
+    tags : string Sqlml.Pg_array.t;
+    scores : int Sqlml.Pg_array.t;
+    states : public_user_status Sqlml.Pg_array.t;
     meta : Yojson.Safe.t;
   }
 
@@ -242,9 +398,9 @@ val put_tag_set :
   Sqlml.conn ->
   id:Uuidm.t ->
   owner:Uuidm.t ->
-  tags:string list ->
-  scores:int list ->
-  states:user_status list ->
+  tags:string Sqlml.Pg_array.t ->
+  scores:int Sqlml.Pg_array.t ->
+  states:public_user_status Sqlml.Pg_array.t ->
   meta:Yojson.Safe.t ->
   (int, Sqlml.Error.t) result
 
@@ -252,9 +408,9 @@ val put_tag_set_exn :
   Sqlml.conn ->
   id:Uuidm.t ->
   owner:Uuidm.t ->
-  tags:string list ->
-  scores:int list ->
-  states:user_status list ->
+  tags:string Sqlml.Pg_array.t ->
+  scores:int Sqlml.Pg_array.t ->
+  states:public_user_status Sqlml.Pg_array.t ->
   meta:Yojson.Safe.t ->
   int
 (** Raising {!put_tag_set}.
@@ -292,9 +448,9 @@ module Find_users : sig
   type params = {
     org : Uuidm.t;
     email : string option;
-    status : user_status option;
+    status : public_user_status option;
     min_balance : Decimal.t option;
-    limit : int;
+    limit : int64;
   }
 
   include Sqlml.Query.MANY with type params := params and type row = find_users_row
@@ -303,9 +459,9 @@ end
 val find_users :
   Sqlml.conn ->
   org:Uuidm.t ->
-  limit:int ->
+  limit:int64 ->
   ?email:string ->
-  ?status:user_status ->
+  ?status:public_user_status ->
   ?min_balance:Decimal.t ->
   unit ->
   (find_users_row list, Sqlml.Error.t) result
@@ -315,9 +471,9 @@ val find_users :
 val find_users_exn :
   Sqlml.conn ->
   org:Uuidm.t ->
-  limit:int ->
+  limit:int64 ->
   ?email:string ->
-  ?status:user_status ->
+  ?status:public_user_status ->
   ?min_balance:Decimal.t ->
   unit ->
   find_users_row list
@@ -386,7 +542,7 @@ module Bulk_add_users : sig
     organization_id : Uuidm.t;
     email : string;
     display_name : string option;
-    status : user_status;
+    status : public_user_status;
     balance : Decimal.t;
   }
 

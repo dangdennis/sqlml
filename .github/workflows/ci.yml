@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * 1"
 
 # A superseded push should not keep burning a runner.
 concurrency:
@@ -43,7 +46,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     services:
       postgres:
@@ -121,6 +124,30 @@ jobs:
         run: |
           opam exec -- dune exec bin/main.exe -- snapshot -q example/sql
           git diff --exit-code example/sql/sqlml.snapshot.json
+
+      - name: Install pinned differential oracle
+        run: python3 integration/install_pgenie.py "$RUNNER_TEMP/pgenie"
+
+      - name: Compiler corpus and compiled decoders
+        env:
+          DATABASE_URL: postgresql://sqlml:sqlml@127.0.0.1:55432/sqlml_inference
+          EXTENDED: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          PGPASSWORD=sqlml createdb -h 127.0.0.1 -p 55432 -U sqlml sqlml_inference
+          cases=1000
+          if [ "$EXTENDED" = true ]; then cases=10000; fi
+          opam exec -- dune exec integration/inference.exe -- --cases "$cases" --output "$RUNNER_TEMP/inference"
+          opam exec -- python3 integration/compile_corpus.py "$RUNNER_TEMP/inference"
+          python3 integration/differential.py "$RUNNER_TEMP/inference" --pgn "$RUNNER_TEMP/pgenie/pgn"
+          opam exec -- dune exec integration/inference.exe -- --case 11 --output "$RUNNER_TEMP/inference-recreated"
+          cmp "$RUNNER_TEMP/inference/fingerprint.json" "$RUNNER_TEMP/inference-recreated/fingerprint.json"
+
+      - name: Preserve compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiler-inference
+          path: ${{ runner.temp }}/inference*
 
       - name: Formatting
         run: opam exec -- dune build @fmt

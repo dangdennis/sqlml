@@ -15,6 +15,7 @@ val type_name : t -> string
 (** {1 Encoders spliced into generated code} *)
 
 val of_bool : bool -> t
+val of_int64 : int64 -> t
 val of_int : int -> t
 val of_float : float -> t
 val of_string : string -> t
@@ -37,6 +38,7 @@ val of_list : ('a -> string) -> 'a list -> t
 module Print : sig
   val string : string -> string
   val octets : string -> string
+  val int64 : int64 -> string
   val int : int -> string
   val float : float -> string
   val bool : bool -> string

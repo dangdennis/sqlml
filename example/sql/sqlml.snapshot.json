@@ -1,8 +1,126 @@
 {
-  "format_version": 1,
+  "format_version": 2,
+  "type_registry": [
+    [
+      [ "compiler_a", "_payload" ],
+      [ "array", [ "compiler_a", "payload" ], "," ]
+    ],
+    [
+      [ "compiler_a", "_positive" ],
+      [ "array", [ "compiler_a", "positive" ], "," ]
+    ],
+    [
+      [ "compiler_a", "_status" ],
+      [ "array", [ "compiler_a", "status" ], "," ]
+    ],
+    [
+      [ "compiler_a", "payload" ],
+      [
+        "composite",
+        [
+          [ "label", [ "pg_catalog", "text" ], 1, -1 ],
+          [ "states", [ "compiler_a", "_status" ], 2, -1 ],
+          [ "amount", [ "compiler_a", "positive" ], 3, -1 ],
+          [ "span", [ "pg_catalog", "int8range" ], 4, -1 ]
+        ]
+      ]
+    ],
+    [
+      [ "compiler_a", "positive" ],
+      [
+        "domain",
+        [ "pg_catalog", "int8" ],
+        false,
+        -1,
+        [ "CHECK ((VALUE > 0))" ]
+      ]
+    ],
+    [
+      [ "compiler_a", "positive_list" ],
+      [ "domain", [ "compiler_a", "_positive" ], false, -1, [] ]
+    ],
+    [ [ "compiler_a", "status" ], [ "enum", [ "open", "closed" ] ] ],
+    [ [ "compiler_a", "text_range" ], [ "range", [ "pg_catalog", "text" ] ] ],
+    [
+      [ "compiler_b", "payload" ],
+      [
+        "composite",
+        [
+          [ "label", [ "pg_catalog", "text" ], 1, -1 ],
+          [ "state", [ "compiler_b", "status" ], 2, -1 ]
+        ]
+      ]
+    ],
+    [ [ "compiler_b", "status" ], [ "enum", [ "open", "archived" ] ] ],
+    [
+      [ "pg_catalog", "_bytea" ], [ "array", [ "pg_catalog", "bytea" ], "," ]
+    ],
+    [ [ "pg_catalog", "_int4" ], [ "array", [ "pg_catalog", "int4" ], "," ] ],
+    [ [ "pg_catalog", "_int8" ], [ "array", [ "pg_catalog", "int8" ], "," ] ],
+    [ [ "pg_catalog", "_text" ], [ "array", [ "pg_catalog", "text" ], "," ] ],
+    [ [ "pg_catalog", "_uuid" ], [ "array", [ "pg_catalog", "uuid" ], "," ] ],
+    [ [ "pg_catalog", "bytea" ], [ "base" ] ],
+    [ [ "pg_catalog", "date" ], [ "base" ] ],
+    [ [ "pg_catalog", "int4" ], [ "base" ] ],
+    [ [ "pg_catalog", "int8" ], [ "base" ] ],
+    [
+      [ "pg_catalog", "int8multirange" ],
+      [ "multirange", [ "pg_catalog", "int8range" ] ]
+    ],
+    [ [ "pg_catalog", "int8range" ], [ "range", [ "pg_catalog", "int8" ] ] ],
+    [ [ "pg_catalog", "interval" ], [ "base" ] ],
+    [ [ "pg_catalog", "jsonb" ], [ "base" ] ],
+    [ [ "pg_catalog", "numeric" ], [ "base" ] ],
+    [ [ "pg_catalog", "text" ], [ "base" ] ],
+    [ [ "pg_catalog", "time" ], [ "base" ] ],
+    [ [ "pg_catalog", "timestamptz" ], [ "base" ] ],
+    [ [ "pg_catalog", "uuid" ], [ "base" ] ],
+    [
+      [ "public", "_user_status" ],
+      [ "array", [ "public", "user_status" ], "," ]
+    ],
+    [ [ "public", "user_status" ], [ "enum", [ "active", "banned" ] ] ]
+  ],
   "schema_files": [ "../schema.sql" ],
-  "schema_hash": "06bd61ac901b5dceb887923f7347437f1b8100a1b2ef60013fa0601eb9784110",
+  "schema_hash": "83f8337a7e0c0eca020b653b8f5e9d296a6b7447e5b963ea31ee3713782dcf04",
   "queries": [
+    {
+      "name": "BinaryContainers",
+      "variants": [
+        "3de984a99eafe9ea85c5dfb8ae03802df2b235fd29b30c163f3e6985c245e0e4"
+      ],
+      "params": [
+        {
+          "pname": "bytes",
+          "pg_type": [ "pg_catalog", "bytea" ],
+          "pnullable": false
+        },
+        {
+          "pname": "items",
+          "pg_type": [ "pg_catalog", "_bytea" ],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "bytes",
+          "pg_type": [ "pg_catalog", "bytea" ],
+          "table": null,
+          "table_col": 0,
+          "typmod": -1,
+          "nullable": true
+        },
+        {
+          "name": "items",
+          "pg_type": [ "pg_catalog", "_bytea" ],
+          "table": null,
+          "table_col": 0,
+          "typmod": -1,
+          "nullable": true
+        }
+      ],
+      "model_table": null
+    },
     {
       "name": "BulkAddUsers",
       "variants": [
@@ -11,44 +129,82 @@
       "params": [
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         },
         {
           "pname": "organization_id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         },
         {
           "pname": "email",
-          "ptype_name": "text",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "text" ],
           "pnullable": false
         },
         {
           "pname": "display_name",
-          "ptype_name": "text",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "text" ],
           "pnullable": true
         },
         {
           "pname": "status",
-          "ptype_name": "user_status",
-          "pelem_type_name": null,
-          "penum_labels": [ "active", "banned" ],
+          "pg_type": [ "public", "user_status" ],
           "pnullable": false
         },
         {
           "pname": "balance",
-          "ptype_name": "numeric",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "numeric" ],
+          "pnullable": false
+        }
+      ],
+      "columns": [],
+      "model_table": null
+    },
+    {
+      "name": "CopyCompilerValue",
+      "variants": [
+        "aa492551aba12b448e74eef607ddf030c1360f99de6406a8fad08573b3ab2eed"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "pg_type": [ "pg_catalog", "int4" ],
+          "pnullable": false
+        },
+        {
+          "pname": "payload",
+          "pg_type": [ "compiler_a", "payload" ],
+          "pnullable": true
+        },
+        {
+          "pname": "other",
+          "pg_type": [ "compiler_b", "payload" ],
+          "pnullable": true
+        },
+        {
+          "pname": "payloads",
+          "pg_type": [ "compiler_a", "_payload" ],
+          "pnullable": false
+        },
+        {
+          "pname": "matrix",
+          "pg_type": [ "pg_catalog", "_int8" ],
+          "pnullable": false
+        },
+        {
+          "pname": "positives",
+          "pg_type": [ "compiler_a", "positive_list" ],
+          "pnullable": false
+        },
+        {
+          "pname": "spans",
+          "pg_type": [ "pg_catalog", "int8multirange" ],
+          "pnullable": false
+        },
+        {
+          "pname": "words",
+          "pg_type": [ "compiler_a", "text_range" ],
           "pnullable": false
         }
       ],
@@ -64,30 +220,27 @@
       "columns": [
         {
           "name": "email",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.users",
           "table_col": 3,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "title",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "posts",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.posts",
           "table_col": 3,
-          "nullable": true,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "post_count",
-          "type_name": "int8",
-          "elem_type_name": null,
+          "pg_type": [ "pg_catalog", "int8" ],
           "table": null,
           "table_col": 0,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": false
         }
       ],
       "model_table": null
@@ -100,21 +253,18 @@
       "params": [
         {
           "pname": "org",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         }
       ],
       "columns": [
         {
           "name": "n",
-          "type_name": "int8",
-          "elem_type_name": null,
+          "pg_type": [ "pg_catalog", "int8" ],
           "table": null,
           "table_col": 0,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": false
         }
       ],
       "model_table": null
@@ -128,21 +278,19 @@
       "columns": [
         {
           "name": "status",
-          "type_name": "user_status",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "public", "user_status" ],
+          "table": "public.users",
           "table_col": 5,
-          "nullable": false,
-          "enum_labels": [ "active", "banned" ]
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "n",
-          "type_name": "int8",
-          "elem_type_name": null,
+          "pg_type": [ "pg_catalog", "int8" ],
           "table": null,
           "table_col": 0,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": false
         }
       ],
       "model_table": null
@@ -155,44 +303,32 @@
       "params": [
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         },
         {
           "pname": "organization_id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         },
         {
           "pname": "email",
-          "ptype_name": "text",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "text" ],
           "pnullable": false
         },
         {
           "pname": "display_name",
-          "ptype_name": "text",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "text" ],
           "pnullable": true
         },
         {
           "pname": "status",
-          "ptype_name": "user_status",
-          "pelem_type_name": null,
-          "penum_labels": [ "active", "banned" ],
+          "pg_type": [ "public", "user_status" ],
           "pnullable": false
         },
         {
           "pname": "balance",
-          "ptype_name": "numeric",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "numeric" ],
           "pnullable": false
         }
       ],
@@ -207,9 +343,7 @@
       "params": [
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         }
       ],
@@ -224,9 +358,7 @@
       "params": [
         {
           "pname": "org",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         }
       ],
@@ -248,76 +380,62 @@
       "params": [
         {
           "pname": "org",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         },
         {
           "pname": "email",
-          "ptype_name": "text",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "text" ],
           "pnullable": false
         },
         {
           "pname": "status",
-          "ptype_name": "user_status",
-          "pelem_type_name": null,
-          "penum_labels": [ "active", "banned" ],
+          "pg_type": [ "public", "user_status" ],
           "pnullable": false
         },
         {
           "pname": "min_balance",
-          "ptype_name": "numeric",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "numeric" ],
           "pnullable": false
         },
         {
           "pname": "limit",
-          "ptype_name": "int8",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "int8" ],
           "pnullable": false
         }
       ],
       "columns": [
         {
           "name": "id",
-          "type_name": "uuid",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "uuid" ],
+          "table": "public.users",
           "table_col": 1,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "email",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.users",
           "table_col": 3,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "status",
-          "type_name": "user_status",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "public", "user_status" ],
+          "table": "public.users",
           "table_col": 5,
-          "nullable": false,
-          "enum_labels": [ "active", "banned" ]
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "balance",
-          "type_name": "numeric",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "numeric" ],
+          "table": "public.users",
           "table_col": 6,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": 786438,
+          "nullable": true
         }
       ],
       "model_table": null
@@ -330,39 +448,106 @@
       "params": [
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         }
       ],
       "columns": [
         {
           "name": "on_date",
-          "type_name": "date",
-          "elem_type_name": null,
-          "table": "bookings",
+          "pg_type": [ "pg_catalog", "date" ],
+          "table": "public.bookings",
           "table_col": 2,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "at_time",
-          "type_name": "time",
-          "elem_type_name": null,
-          "table": "bookings",
+          "pg_type": [ "pg_catalog", "time" ],
+          "table": "public.bookings",
           "table_col": 3,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "duration",
-          "type_name": "interval",
-          "elem_type_name": null,
-          "table": "bookings",
+          "pg_type": [ "pg_catalog", "interval" ],
+          "table": "public.bookings",
           "table_col": 4,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "GetCompilerValue",
+      "variants": [
+        "c98bbd03e948058c884fd985f5262ac0596f10e30177f30f6260770c99a1d0cc"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "pg_type": [ "pg_catalog", "int4" ],
+          "pnullable": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "payload",
+          "pg_type": [ "compiler_a", "payload" ],
+          "table": "compiler_a.\"values\"",
+          "table_col": 2,
+          "typmod": -1,
+          "nullable": true
+        },
+        {
+          "name": "other",
+          "pg_type": [ "compiler_b", "payload" ],
+          "table": "compiler_a.\"values\"",
+          "table_col": 3,
+          "typmod": -1,
+          "nullable": true
+        },
+        {
+          "name": "payloads",
+          "pg_type": [ "compiler_a", "_payload" ],
+          "table": "compiler_a.\"values\"",
+          "table_col": 4,
+          "typmod": -1,
+          "nullable": true
+        },
+        {
+          "name": "matrix",
+          "pg_type": [ "pg_catalog", "_int8" ],
+          "table": "compiler_a.\"values\"",
+          "table_col": 5,
+          "typmod": -1,
+          "nullable": true
+        },
+        {
+          "name": "positives",
+          "pg_type": [ "compiler_a", "_positive" ],
+          "table": "compiler_a.\"values\"",
+          "table_col": 6,
+          "typmod": -1,
+          "nullable": true
+        },
+        {
+          "name": "spans",
+          "pg_type": [ "pg_catalog", "int8multirange" ],
+          "table": "compiler_a.\"values\"",
+          "table_col": 7,
+          "typmod": -1,
+          "nullable": true
+        },
+        {
+          "name": "words",
+          "pg_type": [ "compiler_a", "text_range" ],
+          "table": "compiler_a.\"values\"",
+          "table_col": 8,
+          "typmod": -1,
+          "nullable": true
         }
       ],
       "model_table": null
@@ -375,48 +560,42 @@
       "params": [
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         }
       ],
       "columns": [
         {
           "name": "tags",
-          "type_name": "_text",
-          "elem_type_name": "text",
-          "table": "tag_sets",
+          "pg_type": [ "pg_catalog", "_text" ],
+          "table": "public.tag_sets",
           "table_col": 3,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "scores",
-          "type_name": "_int4",
-          "elem_type_name": "int4",
-          "table": "tag_sets",
+          "pg_type": [ "pg_catalog", "_int4" ],
+          "table": "public.tag_sets",
           "table_col": 4,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "states",
-          "type_name": "_user_status",
-          "elem_type_name": "user_status",
-          "table": "tag_sets",
+          "pg_type": [ "public", "_user_status" ],
+          "table": "public.tag_sets",
           "table_col": 5,
-          "nullable": false,
-          "enum_labels": [ "active", "banned" ]
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "meta",
-          "type_name": "jsonb",
-          "elem_type_name": null,
-          "table": "tag_sets",
+          "pg_type": [ "pg_catalog", "jsonb" ],
+          "table": "public.tag_sets",
           "table_col": 6,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         }
       ],
       "model_table": null
@@ -429,66 +608,58 @@
       "params": [
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         }
       ],
       "columns": [
         {
           "name": "id",
-          "type_name": "uuid",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "uuid" ],
+          "table": "public.users",
           "table_col": 1,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "email",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.users",
           "table_col": 3,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "display_name",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.users",
           "table_col": 4,
-          "nullable": true,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "status",
-          "type_name": "user_status",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "public", "user_status" ],
+          "table": "public.users",
           "table_col": 5,
-          "nullable": false,
-          "enum_labels": [ "active", "banned" ]
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "balance",
-          "type_name": "numeric",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "numeric" ],
+          "table": "public.users",
           "table_col": 6,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": 786438,
+          "nullable": true
         },
         {
           "name": "created_at",
-          "type_name": "timestamptz",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "timestamptz" ],
+          "table": "public.users",
           "table_col": 7,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         }
       ],
       "model_table": null
@@ -501,78 +672,69 @@
       "params": [
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         }
       ],
       "columns": [
         {
           "name": "id",
-          "type_name": "uuid",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "uuid" ],
+          "table": "public.users",
           "table_col": 1,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "organization_id",
-          "type_name": "uuid",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "uuid" ],
+          "table": "public.users",
           "table_col": 2,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "email",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.users",
           "table_col": 3,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "display_name",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.users",
           "table_col": 4,
-          "nullable": true,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "status",
-          "type_name": "user_status",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "public", "user_status" ],
+          "table": "public.users",
           "table_col": 5,
-          "nullable": false,
-          "enum_labels": [ "active", "banned" ]
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "balance",
-          "type_name": "numeric",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "numeric" ],
+          "table": "public.users",
           "table_col": 6,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": 786438,
+          "nullable": true
         },
         {
           "name": "created_at",
-          "type_name": "timestamptz",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "timestamptz" ],
+          "table": "public.users",
           "table_col": 7,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         }
       ],
-      "model_table": "users"
+      "model_table": "public.users"
     },
     {
       "name": "GetUserStrict",
@@ -582,66 +744,58 @@
       "params": [
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         }
       ],
       "columns": [
         {
           "name": "id",
-          "type_name": "uuid",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "uuid" ],
+          "table": "public.users",
           "table_col": 1,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "email",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.users",
           "table_col": 3,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "display_name",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.users",
           "table_col": 4,
-          "nullable": true,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "status",
-          "type_name": "user_status",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "public", "user_status" ],
+          "table": "public.users",
           "table_col": 5,
-          "nullable": false,
-          "enum_labels": [ "active", "banned" ]
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "balance",
-          "type_name": "numeric",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "numeric" ],
+          "table": "public.users",
           "table_col": 6,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": 786438,
+          "nullable": true
         },
         {
           "name": "created_at",
-          "type_name": "timestamptz",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "timestamptz" ],
+          "table": "public.users",
           "table_col": 7,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         }
       ],
       "model_table": null
@@ -654,30 +808,26 @@
       "params": [
         {
           "pname": "ids",
-          "ptype_name": "_uuid",
-          "pelem_type_name": "uuid",
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "_uuid" ],
           "pnullable": false
         }
       ],
       "columns": [
         {
           "name": "id",
-          "type_name": "uuid",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "uuid" ],
+          "table": "public.users",
           "table_col": 1,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "email",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.users",
           "table_col": 3,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         }
       ],
       "model_table": null
@@ -690,21 +840,44 @@
       "params": [
         {
           "pname": "key",
-          "ptype_name": "text",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "text" ],
           "pnullable": false
         }
       ],
       "columns": [
         {
           "name": "id",
-          "type_name": "uuid",
-          "elem_type_name": null,
-          "table": "tag_sets",
+          "pg_type": [ "pg_catalog", "uuid" ],
+          "table": "public.tag_sets",
           "table_col": 1,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
+        }
+      ],
+      "model_table": null
+    },
+    {
+      "name": "OuterJoinCompiler",
+      "variants": [
+        "0eeca7bacde44f4e878915a99f2cde080bd09cf0c826d746cfe18949584d0ef4"
+      ],
+      "params": [],
+      "columns": [
+        {
+          "name": "id",
+          "pg_type": [ "pg_catalog", "int4" ],
+          "table": "compiler_a.\"values\"",
+          "table_col": 1,
+          "typmod": -1,
+          "nullable": true
+        },
+        {
+          "name": "payload",
+          "pg_type": [ "compiler_a", "payload" ],
+          "table": "compiler_a.\"values\"",
+          "table_col": 2,
+          "typmod": -1,
+          "nullable": true
         }
       ],
       "model_table": null
@@ -717,30 +890,72 @@
       "params": [
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         },
         {
           "pname": "on_date",
-          "ptype_name": "date",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "date" ],
           "pnullable": false
         },
         {
           "pname": "at_time",
-          "ptype_name": "time",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "time" ],
           "pnullable": false
         },
         {
           "pname": "duration",
-          "ptype_name": "interval",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "interval" ],
+          "pnullable": false
+        }
+      ],
+      "columns": [],
+      "model_table": null
+    },
+    {
+      "name": "PutCompilerValue",
+      "variants": [
+        "01c5b24f778a85da9927679f7c2cab18c12577814000a462eafe610d02dd3d17"
+      ],
+      "params": [
+        {
+          "pname": "id",
+          "pg_type": [ "pg_catalog", "int4" ],
+          "pnullable": false
+        },
+        {
+          "pname": "payload",
+          "pg_type": [ "compiler_a", "payload" ],
+          "pnullable": true
+        },
+        {
+          "pname": "other",
+          "pg_type": [ "compiler_b", "payload" ],
+          "pnullable": true
+        },
+        {
+          "pname": "payloads",
+          "pg_type": [ "compiler_a", "_payload" ],
+          "pnullable": false
+        },
+        {
+          "pname": "matrix",
+          "pg_type": [ "pg_catalog", "_int8" ],
+          "pnullable": false
+        },
+        {
+          "pname": "positives",
+          "pg_type": [ "compiler_a", "positive_list" ],
+          "pnullable": false
+        },
+        {
+          "pname": "spans",
+          "pg_type": [ "pg_catalog", "int8multirange" ],
+          "pnullable": false
+        },
+        {
+          "pname": "words",
+          "pg_type": [ "compiler_a", "text_range" ],
           "pnullable": false
         }
       ],
@@ -755,44 +970,32 @@
       "params": [
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         },
         {
           "pname": "owner",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         },
         {
           "pname": "tags",
-          "ptype_name": "_text",
-          "pelem_type_name": "text",
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "_text" ],
           "pnullable": false
         },
         {
           "pname": "scores",
-          "ptype_name": "_int4",
-          "pelem_type_name": "int4",
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "_int4" ],
           "pnullable": false
         },
         {
           "pname": "states",
-          "ptype_name": "_user_status",
-          "pelem_type_name": "user_status",
-          "penum_labels": [ "active", "banned" ],
+          "pg_type": [ "public", "_user_status" ],
           "pnullable": false
         },
         {
           "pname": "meta",
-          "ptype_name": "jsonb",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "jsonb" ],
           "pnullable": false
         }
       ],
@@ -807,53 +1010,44 @@
       "params": [
         {
           "pname": "organization_id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         },
         {
           "pname": "email_pattern",
-          "ptype_name": "text",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "text" ],
           "pnullable": false
         },
         {
           "pname": "limit",
-          "ptype_name": "int8",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "int8" ],
           "pnullable": false
         }
       ],
       "columns": [
         {
           "name": "id",
-          "type_name": "uuid",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "uuid" ],
+          "table": "public.users",
           "table_col": 1,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "email",
-          "type_name": "text",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "text" ],
+          "table": "public.users",
           "table_col": 3,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         },
         {
           "name": "created_at",
-          "type_name": "timestamptz",
-          "elem_type_name": null,
-          "table": "users",
+          "pg_type": [ "pg_catalog", "timestamptz" ],
+          "table": "public.users",
           "table_col": 7,
-          "nullable": false,
-          "enum_labels": []
+          "typmod": -1,
+          "nullable": true
         }
       ],
       "model_table": null
@@ -866,16 +1060,12 @@
       "params": [
         {
           "pname": "display_name",
-          "ptype_name": "text",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "text" ],
           "pnullable": true
         },
         {
           "pname": "id",
-          "ptype_name": "uuid",
-          "pelem_type_name": null,
-          "penum_labels": [],
+          "pg_type": [ "pg_catalog", "uuid" ],
           "pnullable": false
         }
       ],

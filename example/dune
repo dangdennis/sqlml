@@ -1,6 +1,6 @@
 (executables
  (names e2e app web)
- (modules e2e app web)
+ (modules e2e app web compiler_checks)
  (libraries
   sqlml
   sqlml_pg

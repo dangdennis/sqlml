@@ -74,26 +74,26 @@ let () =
   (* :one, with an enum and a numeric *)
   (match Db.get_user_exn conn ~id:uuid with
   | Some u ->
-      check "get_user decodes" (u.Db.email = "dennis@example.com");
-      check "enum decodes" (u.Db.status = Db.Active);
-      check "numeric decodes" (Decimal.to_string u.Db.balance = "1234.50");
-      check "timestamptz decodes" (Ptime.to_year u.Db.created_at = 2026);
-      check "uuid decodes" (Uuidm.equal u.Db.id uuid)
+      check "get_user decodes" (Option.get u.Db.email = "dennis@example.com");
+      check "enum decodes" (Option.get u.Db.status = Db.Active);
+      check "numeric decodes" (Decimal.to_string (Option.get u.Db.balance) = "1234.50");
+      check "timestamptz decodes" (Ptime.to_year (Option.get u.Db.created_at) = 2026);
+      check "uuid decodes" (Uuidm.equal (Option.get u.Db.id) uuid)
   | None -> check "get_user decodes" false);
 
   (* the shared model type: one helper, two queries *)
-  let email_of (u : Db.user_row) = u.Db.email in
+  let email_of (u : Db.user_row) = Option.get u.Db.email in
   (match Db.get_user_full_exn conn ~id:uuid with
   | Some u ->
       check "shared model decodes" (email_of u = "dennis@example.com");
-      check "second enum label" (u.Db.status = Db.Banned)
+      check "second enum label" (Option.get u.Db.status = Db.Banned)
   | None -> check "shared model decodes" false);
 
   (* :many, with the ? and ! overrides *)
   let rows = Db.count_posts_by_user_exn conn in
   check "many returns 2" (List.length rows = 2);
   check "? override -> option" ((List.nth rows 0).Db.title = None);
-  check "! override -> non-option" ((List.nth rows 1).Db.post_count = 3);
+  check "! override -> non-option" ((List.nth rows 1).Db.post_count = 3L);
 
   (* :exec *)
   check "exec returns count" (Db.delete_user_exn conn ~id:uuid = 1);

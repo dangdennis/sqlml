@@ -37,19 +37,19 @@ let describe conn ~id =
   | Some u ->
       Printf.sprintf "%s <%s> %s balance=%s joined=%s"
         (Option.value u.name ~default:"(no name)")
-        u.email
-        (match u.status with Active -> "active" | Banned -> "BANNED")
-        (Decimal.to_string u.balance)
-        (Ptime.to_rfc3339 ~tz_offset_s:0 u.created_at)
+        (Option.get u.email)
+        (match Option.get u.status with Active -> "active" | Banned -> "BANNED")
+        (Decimal.to_string (Option.get u.balance))
+        (Ptime.to_rfc3339 ~tz_offset_s:0 (Option.get u.created_at))
 
 let roster conn =
   match
-    search_users conn ~organization_id:org ~email_pattern:"%@app.example.com" ~limit:50
+    search_users conn ~organization_id:org ~email_pattern:"%@app.example.com" ~limit:50L
   with
   | Error e -> Printf.sprintf "roster unavailable: %s" (fail_with e)
   | Ok [] -> "roster: nobody yet"
   | Ok rows ->
-      let one (r : search_users_row) = "  - " ^ r.email in
+      let one (r : search_users_row) = "  - " ^ Option.get r.email in
       "roster:\n" ^ String.concat "\n" (List.map one rows)
 
 (* ---------- driving it ---------- *)
@@ -69,7 +69,7 @@ let () =
   List.iter (fun id -> ignore (delete_user_exn conn ~id)) [ alice; bob ];
 
   (match signup conn ~id:alice ~email:"alice@app.example.com" ~display_name:"Alice" with
-  | Ok (Some u) -> Printf.printf "signed up : %s\n" u.email
+  | Ok (Some u) -> Printf.printf "signed up : %s\n" (Option.get u.email)
   | Ok None -> print_endline "signed up : vanished?"
   | Error e -> Printf.printf "signup failed: %s\n" (fail_with e));
 

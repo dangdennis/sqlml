@@ -3,30 +3,27 @@
     Each query is PQprepared (letting the server infer parameter types — the inference
     {e is} the answer) and PQdescribed, yielding parameter type OIDs and, per result
     column, the name, type OID and originating table column. Everything else is catalog
-    lookups over those OIDs; the records carry only resolved names and labels, never OIDs,
-    so they are stable across databases. Every variant of a dynamic query is verified, and
-    all variants must agree on the result shape.
+    lookups over those OIDs. Types carry stable schema-qualified identities; table OIDs
+    are transient origin metadata and are not persisted. Every variant of a dynamic query
+    is verified, and all variants must agree on the result shape.
 
     Records are [private]: readable everywhere, constructed only here, so a [described] in
     hand reflects what the server actually said. *)
 
 type column = private {
   name : string;  (** alias with any [!]/[?] override stripped *)
-  type_name : string;
-  elem_type_name : string option;  (** [Some] when the type is an array *)
-  table : string option;  (** relname, when the column comes from a table *)
+  pg_type : Pg_type.t;
+  typmod : int;
+  table : string option;  (** qualified relation name, when known *)
   table_oid : int;  (** 0 when not a plain column reference *)
   table_col : int;  (** attnum; 0 when [table_oid] is 0 *)
   nullable : bool;
-  enum_labels : string list;  (** non-empty when the type is an enum *)
 }
 
 type param = private {
   index : int;
   pname : string;
-  ptype_name : string;
-  pelem_type_name : string option;
-  penum_labels : string list;
+  pg_type : Pg_type.t;
   pnullable : bool;  (** from a trailing [?] on the placeholder *)
 }
 
@@ -78,3 +75,15 @@ val v_described :
   columns:column list ->
   model_table:string option ->
   described
+
+val column :
+  name:string ->
+  pg_type:Pg_type.t ->
+  typmod:int ->
+  table:string option ->
+  table_oid:int ->
+  table_col:int ->
+  nullable:bool ->
+  column
+
+val param : index:int -> pname:string -> pg_type:Pg_type.t -> pnullable:bool -> param

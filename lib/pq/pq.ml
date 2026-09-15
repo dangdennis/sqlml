@@ -170,3 +170,5 @@ let conninfo_of_env () =
         (match Sys.getenv_opt "PGPASSWORD" with
         | Some p when p <> "" -> " password=" ^ p
         | _ -> "")
+
+external fmod : res -> int -> int = "sqlml_pq_fmod"

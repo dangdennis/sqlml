@@ -30,3 +30,9 @@ val collect_rows : resolved list -> ((string * field list) list, Diag.t) result
 
 val collect_enums : resolved list -> ((string * string list) list, Diag.t) result
 val block_param_names : Parse.t -> string list
+
+val collect_composites :
+  Config.t -> Describe.described list -> ((string * field list) list, Diag.t) result
+
+val enums_in_fields : field list -> (string * string list) list
+val rename_type : Config.t -> Pg_type.id -> string

@@ -33,7 +33,7 @@ let handle_show pool ~id = Sqlml_caqti.Pool.use pool (fun conn -> get_user conn 
 
 let handle_roster pool =
   Sqlml_caqti.Pool.use pool (fun conn ->
-      search_users conn ~organization_id:org ~email_pattern:"%@web.example.com" ~limit:50)
+      search_users conn ~organization_id:org ~email_pattern:"%@web.example.com" ~limit:50L)
 
 (* ---------- driving it ---------- *)
 
@@ -78,7 +78,7 @@ let () =
     (List.map
        (fun (id, email, display_name) () ->
          match handle_signup pool ~id ~email ~display_name with
-         | Ok (Some u) -> Printf.printf "signup   : %s\n" u.email
+         | Ok (Some u) -> Printf.printf "signup   : %s\n" (Option.get u.email)
          | Ok None -> Printf.printf "signup   : %s vanished\n" email
          | Error e ->
              incr failures;
@@ -131,17 +131,24 @@ let () =
   (match
      Sqlml_caqti.Pool.use pool (fun c ->
          let* _ =
-           put_tag_set c ~id:tag_id ~owner:org ~tags ~scores:[ 7; 8 ] ~states:[ Active ]
+           put_tag_set c ~id:tag_id ~owner:org ~tags:(Sqlml.Pg_array.of_list tags)
+             ~scores:(Sqlml.Pg_array.of_list [ 7; 8 ])
+             ~states:(Sqlml.Pg_array.of_list [ Active ])
              ~meta:(`Assoc [ ("k", `Int 1) ])
          in
          get_tag_set c ~id:tag_id)
    with
   | Ok (Some t) ->
-      if not (t.tags = tags && t.scores = [ 7; 8 ] && t.states = [ Active ]) then
-        incr failures;
-      Printf.printf "arrays   : tags=%b scores=%b states=%b\n" (t.tags = tags)
-        (t.scores = [ 7; 8 ])
-        (t.states = [ Active ])
+      if
+        not
+          (Sqlml.Pg_array.to_list (Option.get t.tags) = tags
+          && Sqlml.Pg_array.to_list (Option.get t.scores) = [ 7; 8 ]
+          && Sqlml.Pg_array.to_list (Option.get t.states) = [ Active ])
+      then incr failures;
+      Printf.printf "arrays   : tags=%b scores=%b states=%b\n"
+        (Sqlml.Pg_array.to_list (Option.get t.tags) = tags)
+        (Sqlml.Pg_array.to_list (Option.get t.scores) = [ 7; 8 ])
+        (Sqlml.Pg_array.to_list (Option.get t.states) = [ Active ])
   | Ok None ->
       incr failures;
       print_endline "arrays   : missing"
@@ -159,7 +166,7 @@ let () =
            {
              Search_users.organization_id = org;
              email_pattern = "%@web.example.com";
-             limit = 100;
+             limit = 100L;
            }
            ~init:0
            ~f:(fun n _ -> n + 1))
@@ -208,4 +215,13 @@ let () =
   List.iter
     (fun (id, _, _) -> ignore (Sqlml_caqti.Pool.use pool (fun c -> delete_user c ~id)))
     people;
+  ignore
+    (unwrap "compiler codecs"
+       (Sqlml_caqti.Pool.use pool (fun conn ->
+            Compiler_checks.run ~id:902
+              ~check:(fun what ok ->
+                Printf.printf "%s: %b\n" what ok;
+                if not ok then incr failures)
+              conn;
+            Ok ())));
   if !failures > 0 then exit 1

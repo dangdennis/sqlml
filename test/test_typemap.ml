@@ -11,11 +11,11 @@ let check what b =
 open Sqlml_gen
 
 let t ?custom ?elem ?(labels = []) ?(nullable = false) name =
-  Typemap.of_pg ?custom ~type_name:name ~elem_type_name:elem ~enum_labels:labels ~nullable
-    ()
+  let pg = Pg_type.legacy ~name ~element:elem ~labels in
+  Typemap.of_type ~custom:(fun _ -> custom) pg ~nullable
 
 let () =
-  check "int8 -> int" (Option.map Typemap.ocaml_type (t "int8") = Some "int");
+  check "int8 -> int64" (Option.map Typemap.ocaml_type (t "int8") = Some "int64");
   check "numeric -> Decimal.t"
     (Option.map Typemap.ocaml_type (t "numeric") = Some "Decimal.t");
   check "timestamptz -> Ptime.t"
@@ -35,21 +35,24 @@ let () =
   check "nullable wraps option"
     (Option.map Typemap.ocaml_type (t "text" ~nullable:true) = Some "string option");
   check "array of uuid"
-    (Option.map Typemap.ocaml_type (t "_uuid" ~elem:"uuid") = Some "Uuidm.t list");
+    (Option.map Typemap.ocaml_type (t "_uuid" ~elem:"uuid")
+    = Some "(Uuidm.t) Sqlml.Pg_array.t");
   check "nullable array"
     (Option.map Typemap.ocaml_type (t "_int4" ~elem:"int4" ~nullable:true)
-    = Some "int list option");
+    = Some "(int) Sqlml.Pg_array.t option");
   check "array of enum decodes via _of_string"
     (Option.map Typemap.decoder (t "_status" ~elem:"status" ~labels:[ "a"; "b" ])
-    = Some "(Sqlml.Row.list status_of_string)");
+    = Some
+        "(Sqlml.Row.custom (Sqlml.Pg_array.of_string ~delimiter:',' \
+         public_status_of_string))");
 
   (* enums *)
   check "enum ocaml type is the typname"
     (Option.map Typemap.ocaml_type (t "user_status" ~labels:[ "active" ])
-    = Some "user_status");
+    = Some "public_user_status");
   check "enum decoder"
     (Option.map Typemap.decoder (t "user_status" ~labels:[ "a" ])
-    = Some "user_status_of_row");
+    = Some "public_user_status_of_row");
 
   (* customs replace whatever the type would otherwise be, including enums *)
   let c =

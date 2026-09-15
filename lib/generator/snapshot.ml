@@ -5,7 +5,7 @@
 
 open Gen_util
 
-let format_version = 1
+let format_version = 2
 let filename = "sqlml.snapshot.json"
 let hash s = Digest.BLAKE256.to_hex (Digest.BLAKE256.string s)
 
@@ -46,21 +46,24 @@ let json_of_column (c : Describe.column) =
   `Assoc
     [
       ("name", `String c.Describe.name);
-      ("type_name", `String c.Describe.type_name);
-      ("elem_type_name", json_opt c.Describe.elem_type_name);
+      ( "pg_type",
+        match Pg_type.to_json c.Describe.pg_type with
+        | `Assoc xs -> List.assoc "root" xs
+        | _ -> assert false );
       ("table", json_opt c.Describe.table);
       ("table_col", `Int c.Describe.table_col);
+      ("typmod", `Int c.Describe.typmod);
       ("nullable", `Bool c.Describe.nullable);
-      ("enum_labels", json_strings c.Describe.enum_labels);
     ]
 
 let json_of_param (p : Describe.param) =
   `Assoc
     [
       ("pname", `String p.Describe.pname);
-      ("ptype_name", `String p.Describe.ptype_name);
-      ("pelem_type_name", json_opt p.Describe.pelem_type_name);
-      ("penum_labels", json_strings p.Describe.penum_labels);
+      ( "pg_type",
+        match Pg_type.to_json p.Describe.pg_type with
+        | `Assoc xs -> List.assoc "root" xs
+        | _ -> assert false );
       ("pnullable", `Bool p.Describe.pnullable);
     ]
 
@@ -82,10 +85,24 @@ let write ~queries_dir ~config described =
       (fun a b -> compare a.Describe.query.Parse.name b.Describe.query.Parse.name)
       described
   in
+  let registry =
+    List.concat_map
+      (fun (d : Describe.described) ->
+        List.map (fun (c : Describe.column) -> c.pg_type) d.columns
+        @ List.map (fun (p : Describe.param) -> p.pg_type) d.params)
+      described
+    |> List.concat_map (fun t ->
+        match Pg_type.to_json t with
+        | `Assoc xs -> (
+            match List.assoc "types" xs with `List xs -> xs | _ -> assert false)
+        | _ -> assert false)
+    |> List.sort_uniq compare
+  in
   let json =
     `Assoc
       [
         ("format_version", `Int format_version);
+        ("type_registry", `List registry);
         ("schema_files", json_strings (Config.schema config));
         ("schema_hash", json_opt schema);
         ("queries", `List (List.map json_of_described sorted));
@@ -131,7 +148,11 @@ let as_assoc = function
   | `Assoc kvs -> Ok kvs
   | _ -> Diag.error "snapshot: expected an object"
 
-let entry_of_json json =
+let as_pg_type j =
+  try Ok (Pg_type.of_json j) with Invalid_argument m -> Diag.error "snapshot: %s" m
+
+let entry_of_json registry json =
+  let as_pg_type root = as_pg_type (`Assoc [ ("root", root); ("types", registry) ]) in
   let* kvs = as_assoc json in
   let* name = mem "name" kvs in
   let* name = as_string name in
@@ -146,22 +167,19 @@ let entry_of_json json =
       (fun p ->
         let* kvs = as_assoc p in
         let* pname = Result.bind (mem "pname" kvs) as_string in
-        let* ptype_name = Result.bind (mem "ptype_name" kvs) as_string in
-        let* pelem_type_name = Result.bind (mem "pelem_type_name" kvs) as_opt in
-        let* penum_labels = Result.bind (mem "penum_labels" kvs) as_strings in
+        let* pg_type = Result.bind (mem "pg_type" kvs) as_pg_type in
         let* pnullable =
           match List.assoc_opt "pnullable" kvs with
           | Some (`Bool b) -> Ok b
           | _ -> Diag.error "snapshot: pnullable"
         in
-        Ok (pname, ptype_name, pelem_type_name, penum_labels, pnullable))
+        Ok (pname, pg_type, pnullable))
       params
   in
   let e_params =
     List.mapi
-      (fun i (pname, ptype_name, pelem_type_name, penum_labels, pnullable) ->
-        Describe.v_param ~index:(i + 1) ~pname ~ptype_name ~pelem_type_name ~penum_labels
-          ~pnullable)
+      (fun i (pname, pg_type, pnullable) ->
+        Describe.param ~index:(i + 1) ~pname ~pg_type ~pnullable)
       e_params
   in
   let* columns = mem "columns" kvs in
@@ -186,9 +204,13 @@ let entry_of_json json =
       (fun c ->
         let* kvs = as_assoc c in
         let* cname = Result.bind (mem "name" kvs) as_string in
-        let* type_name = Result.bind (mem "type_name" kvs) as_string in
-        let* elem_type_name = Result.bind (mem "elem_type_name" kvs) as_opt in
+        let* pg_type = Result.bind (mem "pg_type" kvs) as_pg_type in
         let* table = Result.bind (mem "table" kvs) as_opt in
+        let* typmod =
+          match List.assoc_opt "typmod" kvs with
+          | Some (`Int n) -> Ok n
+          | _ -> Diag.error "snapshot: typmod"
+        in
         let* table_col =
           match List.assoc_opt "table_col" kvs with
           | Some (`Int n) -> Ok n
@@ -199,10 +221,9 @@ let entry_of_json json =
           | Some (`Bool b) -> Ok b
           | _ -> Diag.error "snapshot: nullable"
         in
-        let* enum_labels = Result.bind (mem "enum_labels" kvs) as_strings in
         Ok
-          (Describe.v_column ~name:cname ~type_name ~elem_type_name ~table
-             ~table_oid:(surrogate table) ~table_col ~nullable ~enum_labels))
+          (Describe.column ~name:cname ~pg_type ~typmod ~table
+             ~table_oid:(surrogate table) ~table_col ~nullable))
       columns
   in
   let* e_model = Result.bind (mem "model_table" kvs) as_opt in
@@ -238,7 +259,8 @@ let load ~queries_dir =
       | `List l -> Ok l
       | _ -> Diag.error ~file:path "snapshot: queries"
     in
-    let* entries = map_result entry_of_json queries in
+    let* registry = mem "type_registry" kvs in
+    let* entries = map_result (entry_of_json registry) queries in
     Ok (path, files, stored_hash, entries)
 
 let describe_offline ~queries_dir ~config queries =

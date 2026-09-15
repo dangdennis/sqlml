@@ -9,6 +9,7 @@ type t = Value.t array
 
 exception Bad of { column : int; expected : string; got : string }
 
+val int64 : t -> int -> int64
 val int : t -> int -> int
 val bool : t -> int -> bool
 val string : t -> int -> string
@@ -37,6 +38,8 @@ val list : (string -> 'a) -> t -> int -> 'a list
     row. *)
 module Elem : sig
   val string : string -> string
+  val octets : string -> string
+  val int64 : string -> int64
   val int : string -> int
   val float : string -> float
   val bool : string -> bool

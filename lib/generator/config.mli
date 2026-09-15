@@ -20,3 +20,6 @@ val custom : t -> key:string option -> pg_type:string -> custom option
 val schema : t -> string list
 (** [schema = ["../schema.sql"]]: files (relative to the queries directory) whose hash is
     stored in the offline snapshot, so schema edits invalidate it. *)
+
+val qualify : t -> names:string list -> (t, Diag.t) result
+(** Resolve unqualified configuration shorthands, rejecting ambiguity. *)

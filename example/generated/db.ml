@@ -2,81 +2,206 @@
 
    Regenerate with: sqlml generate *)
 
-[@@@warning "-69"]
+[@@@warning "-69-30-39"]
 
-type user_status = Active | Banned
+type compiler_a_status = Open | Closed
+type compiler_b_status = Open | Archived
+type public_user_status = Active | Banned
 
-let user_status_to_string = function Active -> "active" | Banned -> "banned"
-let user_status_to_value x = Sqlml.Value.of_string (user_status_to_string x)
-let _ = user_status_to_value
+let compiler_a_status_to_string (v : compiler_a_status) =
+  match v with Open -> "open" | Closed -> "closed"
 
-let user_status_of_string = function
+let compiler_a_status_to_value x = Sqlml.Value.of_string (compiler_a_status_to_string x)
+let _ = compiler_a_status_to_value
+
+let compiler_a_status_of_string s : compiler_a_status =
+  match s with
+  | "open" -> Open
+  | "closed" -> Closed
+  | o -> failwith ("compiler_a_status" ^ ": " ^ o)
+
+let compiler_a_status_of_row r i =
+  let s = Sqlml.Row.string r i in
+  try compiler_a_status_of_string s
+  with _ ->
+    raise (Sqlml.Row.Bad { column = i; expected = "compiler_a_status"; got = s })
+
+let _ = compiler_a_status_of_row
+
+let compiler_b_status_to_string (v : compiler_b_status) =
+  match v with Open -> "open" | Archived -> "archived"
+
+let compiler_b_status_to_value x = Sqlml.Value.of_string (compiler_b_status_to_string x)
+let _ = compiler_b_status_to_value
+
+let compiler_b_status_of_string s : compiler_b_status =
+  match s with
+  | "open" -> Open
+  | "archived" -> Archived
+  | o -> failwith ("compiler_b_status" ^ ": " ^ o)
+
+let compiler_b_status_of_row r i =
+  let s = Sqlml.Row.string r i in
+  try compiler_b_status_of_string s
+  with _ ->
+    raise (Sqlml.Row.Bad { column = i; expected = "compiler_b_status"; got = s })
+
+let _ = compiler_b_status_of_row
+
+let public_user_status_to_string (v : public_user_status) =
+  match v with Active -> "active" | Banned -> "banned"
+
+let public_user_status_to_value x = Sqlml.Value.of_string (public_user_status_to_string x)
+let _ = public_user_status_to_value
+
+let public_user_status_of_string s : public_user_status =
+  match s with
   | "active" -> Active
   | "banned" -> Banned
-  | o -> failwith ("user_status" ^ ": " ^ o)
+  | o -> failwith ("public_user_status" ^ ": " ^ o)
 
-let user_status_of_row r i =
+let public_user_status_of_row r i =
   let s = Sqlml.Row.string r i in
-  try user_status_of_string s
-  with _ -> raise (Sqlml.Row.Bad { column = i; expected = "user_status"; got = s })
+  try public_user_status_of_string s
+  with _ ->
+    raise (Sqlml.Row.Bad { column = i; expected = "public_user_status"; got = s })
 
-type count_users_by_status_row = { status : user_status; n : int }
+let _ = public_user_status_of_row
+
+type compiler_a_payload = {
+  label : string option;
+  states : compiler_a_status Sqlml.Pg_array.t option;
+  amount : int64 option;
+  span : int64 Sqlml.Range.t option;
+}
+
+and compiler_b_payload = { label : string option; state : compiler_b_status option }
+
+let rec compiler_a_payload_of_string s : compiler_a_payload =
+  let fields = Sqlml.Composite.of_string s in
+  if Array.length fields <> 4 then invalid_arg "compiler_a_payload: field count";
+  {
+    label = Sqlml.Composite.field Sqlml.Row.Elem.string fields 0;
+    states =
+      Sqlml.Composite.field
+        (Sqlml.Pg_array.of_string ~delimiter:',' compiler_a_status_of_string)
+        fields 1;
+    amount = Sqlml.Composite.field Sqlml.Row.Elem.int64 fields 2;
+    span = Sqlml.Composite.field (Sqlml.Range.of_string Sqlml.Row.Elem.int64) fields 3;
+  }
+
+and compiler_a_payload_to_string (v : compiler_a_payload) =
+  Sqlml.Composite.to_string
+    [|
+      Option.map Sqlml.Value.Print.string v.label;
+      Option.map
+        (Sqlml.Pg_array.to_string ~delimiter:',' compiler_a_status_to_string)
+        v.states;
+      Option.map Sqlml.Value.Print.int64 v.amount;
+      Option.map (Sqlml.Range.to_string Sqlml.Value.Print.int64) v.span;
+    |]
+
+and compiler_b_payload_of_string s : compiler_b_payload =
+  let fields = Sqlml.Composite.of_string s in
+  if Array.length fields <> 2 then invalid_arg "compiler_b_payload: field count";
+  {
+    label = Sqlml.Composite.field Sqlml.Row.Elem.string fields 0;
+    state = Sqlml.Composite.field compiler_b_status_of_string fields 1;
+  }
+
+and compiler_b_payload_to_string (v : compiler_b_payload) =
+  Sqlml.Composite.to_string
+    [|
+      Option.map Sqlml.Value.Print.string v.label;
+      Option.map compiler_b_status_to_string v.state;
+    |]
+
+let _ = (compiler_a_payload_of_string, compiler_a_payload_to_string)
+let _ = (compiler_b_payload_of_string, compiler_b_payload_to_string)
+
+type count_users_by_status_row = { status : public_user_status option; n : int64 }
+
+type get_compiler_value_row = {
+  payload : compiler_a_payload option;
+  other : compiler_b_payload option;
+  payloads : compiler_a_payload Sqlml.Pg_array.t option;
+  matrix : int64 Sqlml.Pg_array.t option;
+  positives : int64 Sqlml.Pg_array.t option;
+  spans : int64 Sqlml.Range.t list option;
+  words : string Sqlml.Range.t option;
+}
+
+type outer_join_compiler_row = { id : int option; payload : compiler_a_payload option }
+
+type binary_containers_row = {
+  bytes : string option;
+  items : string Sqlml.Pg_array.t option;
+}
 
 type get_user_row = {
-  id : User_id.t;
-  email : string;
+  id : User_id.t option;
+  email : string option;
   name : string option;
-  status : user_status;
-  balance : Decimal.t;
-  created_at : Ptime.t;
+  status : public_user_status option;
+  balance : Decimal.t option;
+  created_at : Ptime.t option;
 }
 
-type search_users_row = { id : User_id.t; email : string; created_at : Ptime.t }
-type count_posts_by_user_row = { email : string; title : string option; post_count : int }
+type search_users_row = {
+  id : User_id.t option;
+  email : string option;
+  created_at : Ptime.t option;
+}
+
+type count_posts_by_user_row = {
+  email : string option;
+  title : string option;
+  post_count : int64;
+}
 
 type user_row = {
-  id : User_id.t;
-  organization_id : Uuidm.t;
-  email : string;
+  id : User_id.t option;
+  organization_id : Uuidm.t option;
+  email : string option;
   name : string option;
-  status : user_status;
-  balance : Decimal.t;
-  created_at : Ptime.t;
+  status : public_user_status option;
+  balance : Decimal.t option;
+  created_at : Ptime.t option;
 }
 
-type get_users_by_ids_row = { id : User_id.t; email : string }
+type get_users_by_ids_row = { id : User_id.t option; email : string option }
 
 type get_tag_set_row = {
-  tags : string list;
-  scores : int list;
-  states : user_status list;
-  meta : Yojson.Safe.t;
+  tags : string Sqlml.Pg_array.t option;
+  scores : int Sqlml.Pg_array.t option;
+  states : public_user_status Sqlml.Pg_array.t option;
+  meta : Yojson.Safe.t option;
 }
 
 type get_user_strict_row = {
-  id : User_id.t;
-  email : string;
+  id : User_id.t option;
+  email : string option;
   name : string option;
-  status : user_status;
-  balance : Decimal.t;
-  created_at : Ptime.t;
+  status : public_user_status option;
+  balance : Decimal.t option;
+  created_at : Ptime.t option;
 }
 
 type find_users_row = {
-  id : User_id.t;
-  email : string;
-  status : user_status;
-  balance : Decimal.t;
+  id : User_id.t option;
+  email : string option;
+  status : public_user_status option;
+  balance : Decimal.t option;
 }
 
 type get_booking_row = {
-  on_date : Ptime.date;
-  at_time : Ptime.Span.t;
-  duration : Sqlml.Interval.t;
+  on_date : Ptime.date option;
+  at_time : Ptime.Span.t option;
+  duration : Sqlml.Interval.t option;
 }
 
-type has_meta_key_row = { id : Uuidm.t }
-type count_users_by_org_row = { n : int }
+type has_meta_key_row = { id : Uuidm.t option }
+type count_users_by_org_row = { n : int64 }
 
 module Count_users_by_status = struct
   type params = unit
@@ -87,7 +212,7 @@ module Count_users_by_status = struct
   let encode () = []
 
   let decode r : count_users_by_status_row =
-    { status = user_status_of_row r 0; n = Sqlml.Row.int r 1 }
+    { status = (Sqlml.Row.option public_user_status_of_row) r 0; n = Sqlml.Row.int64 r 1 }
 
   let columns = 2
   let cardinality = Sqlml.Query.Many
@@ -95,6 +220,244 @@ end
 
 let count_users_by_status conn = Sqlml.fetch_all (module Count_users_by_status) conn ()
 let count_users_by_status_exn conn = Sqlml.or_raise (count_users_by_status conn)
+
+module Put_compiler_value = struct
+  type params = {
+    id : int;
+    payload : compiler_a_payload option;
+    other : compiler_b_payload option;
+    payloads : compiler_a_payload Sqlml.Pg_array.t;
+    matrix : int64 Sqlml.Pg_array.t;
+    positives : int64 Sqlml.Pg_array.t;
+    spans : int64 Sqlml.Range.t list;
+    words : string Sqlml.Range.t;
+  }
+
+  let name = "PutCompilerValue"
+
+  let sql (_ : params) =
+    "INSERT INTO compiler_a.values (id, payload, other, payloads, matrix, positives, \
+     spans, words)\n\
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n\
+     ON CONFLICT (id) DO UPDATE SET payload = excluded.payload, other = excluded.other,\n\
+    \  payloads = excluded.payloads, matrix = excluded.matrix, positives = \
+     excluded.positives,\n\
+    \  spans = excluded.spans, words = excluded.words"
+
+  let encode (p : params) =
+    [
+      Sqlml.Value.of_int p.id;
+      (Sqlml.Value.of_option (fun x ->
+           Sqlml.Value.of_string (compiler_a_payload_to_string x)))
+        p.payload;
+      (Sqlml.Value.of_option (fun x ->
+           Sqlml.Value.of_string (compiler_b_payload_to_string x)))
+        p.other;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' compiler_a_payload_to_string) x))
+        p.payloads;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' Sqlml.Value.Print.int64) x))
+        p.matrix;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' Sqlml.Value.Print.int64) x))
+        p.positives;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Range.multirange_to_string Sqlml.Value.Print.int64) x))
+        p.spans;
+      (fun x ->
+        Sqlml.Value.of_string ((Sqlml.Range.to_string Sqlml.Value.Print.string) x))
+        p.words;
+    ]
+
+  let cardinality = Sqlml.Query.Exec
+end
+
+let put_compiler_value conn ~id ~payloads ~matrix ~positives ~spans ~words ?payload ?other
+    () =
+  Sqlml.exec
+    (module Put_compiler_value)
+    conn
+    { Put_compiler_value.id; payload; other; payloads; matrix; positives; spans; words }
+
+let put_compiler_value_exn conn ~id ~payloads ~matrix ~positives ~spans ~words ?payload
+    ?other () =
+  Sqlml.or_raise
+    (put_compiler_value conn ~id ~payloads ~matrix ~positives ~spans ~words ?payload
+       ?other ())
+
+module Get_compiler_value = struct
+  type params = { id : int }
+  type row = get_compiler_value_row
+
+  let name = "GetCompilerValue"
+
+  let sql (_ : params) =
+    "SELECT payload, other, payloads, matrix, positives, spans, words\n\
+     FROM compiler_a.values WHERE id = $1"
+
+  let encode (p : params) = [ Sqlml.Value.of_int p.id ]
+
+  let decode r : get_compiler_value_row =
+    {
+      payload = (Sqlml.Row.option (Sqlml.Row.custom compiler_a_payload_of_string)) r 0;
+      other = (Sqlml.Row.option (Sqlml.Row.custom compiler_b_payload_of_string)) r 1;
+      payloads =
+        (Sqlml.Row.option
+           (Sqlml.Row.custom
+              (Sqlml.Pg_array.of_string ~delimiter:',' compiler_a_payload_of_string)))
+          r 2;
+      matrix =
+        (Sqlml.Row.option
+           (Sqlml.Row.custom
+              (Sqlml.Pg_array.of_string ~delimiter:',' Sqlml.Row.Elem.int64)))
+          r 3;
+      positives =
+        (Sqlml.Row.option
+           (Sqlml.Row.custom
+              (Sqlml.Pg_array.of_string ~delimiter:',' Sqlml.Row.Elem.int64)))
+          r 4;
+      spans =
+        (Sqlml.Row.option
+           (Sqlml.Row.custom (Sqlml.Range.multirange_of_string Sqlml.Row.Elem.int64)))
+          r 5;
+      words =
+        (Sqlml.Row.option
+           (Sqlml.Row.custom (Sqlml.Range.of_string Sqlml.Row.Elem.string)))
+          r 6;
+    }
+
+  let columns = 7
+  let cardinality = Sqlml.Query.One_strict
+end
+
+let get_compiler_value conn ~id =
+  Sqlml.fetch_one_strict (module Get_compiler_value) conn { Get_compiler_value.id }
+
+let get_compiler_value_exn conn ~id = Sqlml.or_raise (get_compiler_value conn ~id)
+
+module Outer_join_compiler = struct
+  type params = unit
+  type row = outer_join_compiler_row
+
+  let name = "OuterJoinCompiler"
+
+  let sql (_ : params) =
+    "SELECT rhs.id, rhs.payload\n\
+     FROM (VALUES (1)) AS lhs(id)\n\
+     LEFT JOIN compiler_a.values AS rhs ON rhs.id = -999"
+
+  let encode () = []
+
+  let decode r : outer_join_compiler_row =
+    {
+      id = (Sqlml.Row.option Sqlml.Row.int) r 0;
+      payload = (Sqlml.Row.option (Sqlml.Row.custom compiler_a_payload_of_string)) r 1;
+    }
+
+  let columns = 2
+  let cardinality = Sqlml.Query.One_strict
+end
+
+let outer_join_compiler conn = Sqlml.fetch_one_strict (module Outer_join_compiler) conn ()
+let outer_join_compiler_exn conn = Sqlml.or_raise (outer_join_compiler conn)
+
+module Copy_compiler_value = struct
+  type params = {
+    id : int;
+    payload : compiler_a_payload option;
+    other : compiler_b_payload option;
+    payloads : compiler_a_payload Sqlml.Pg_array.t;
+    matrix : int64 Sqlml.Pg_array.t;
+    positives : int64 Sqlml.Pg_array.t;
+    spans : int64 Sqlml.Range.t list;
+    words : string Sqlml.Range.t;
+  }
+
+  let name = "CopyCompilerValue"
+
+  let copy_sql =
+    "COPY compiler_a.values (id, payload, other, payloads, matrix, positives, spans, \
+     words) FROM STDIN"
+
+  let encode (p : params) =
+    [
+      Sqlml.Value.of_int p.id;
+      (Sqlml.Value.of_option (fun x ->
+           Sqlml.Value.of_string (compiler_a_payload_to_string x)))
+        p.payload;
+      (Sqlml.Value.of_option (fun x ->
+           Sqlml.Value.of_string (compiler_b_payload_to_string x)))
+        p.other;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' compiler_a_payload_to_string) x))
+        p.payloads;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' Sqlml.Value.Print.int64) x))
+        p.matrix;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' Sqlml.Value.Print.int64) x))
+        p.positives;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Range.multirange_to_string Sqlml.Value.Print.int64) x))
+        p.spans;
+      (fun x ->
+        Sqlml.Value.of_string ((Sqlml.Range.to_string Sqlml.Value.Print.string) x))
+        p.words;
+    ]
+
+  let cardinality = Sqlml.Query.Copy
+end
+
+let copy_compiler_value conn rows = Sqlml.copy (module Copy_compiler_value) conn rows
+let copy_compiler_value_exn conn rows = Sqlml.or_raise (copy_compiler_value conn rows)
+
+module Binary_containers = struct
+  type params = { bytes : string; items : string Sqlml.Pg_array.t }
+  type row = binary_containers_row
+
+  let name = "BinaryContainers"
+  let sql (_ : params) = "SELECT $1::bytea AS bytes, $2::bytea[] AS items"
+
+  let encode (p : params) =
+    [
+      Sqlml.Value.of_octets p.bytes;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' Sqlml.Value.Print.octets) x))
+        p.items;
+    ]
+
+  let decode r : binary_containers_row =
+    {
+      bytes = (Sqlml.Row.option Sqlml.Row.octets) r 0;
+      items =
+        (Sqlml.Row.option
+           (Sqlml.Row.custom
+              (Sqlml.Pg_array.of_string ~delimiter:',' Sqlml.Row.Elem.octets)))
+          r 1;
+    }
+
+  let columns = 2
+  let cardinality = Sqlml.Query.One_strict
+end
+
+let binary_containers conn ~bytes ~items =
+  Sqlml.fetch_one_strict
+    (module Binary_containers)
+    conn
+    { Binary_containers.bytes; items }
+
+let binary_containers_exn conn ~bytes ~items =
+  Sqlml.or_raise (binary_containers conn ~bytes ~items)
 
 module Get_user = struct
   type params = { id : Uuidm.t }
@@ -111,12 +474,12 @@ module Get_user = struct
 
   let decode r : get_user_row =
     {
-      id = (Sqlml.Row.custom User_id.of_string) r 0;
-      email = Sqlml.Row.string r 1;
+      id = (Sqlml.Row.option (Sqlml.Row.custom User_id.of_string)) r 0;
+      email = (Sqlml.Row.option Sqlml.Row.string) r 1;
       name = (Sqlml.Row.option Sqlml.Row.string) r 2;
-      status = user_status_of_row r 3;
-      balance = Sqlml.Row.decimal r 4;
-      created_at = Sqlml.Row.ptime r 5;
+      status = (Sqlml.Row.option public_user_status_of_row) r 3;
+      balance = (Sqlml.Row.option Sqlml.Row.decimal) r 4;
+      created_at = (Sqlml.Row.option Sqlml.Row.ptime) r 5;
     }
 
   let columns = 6
@@ -127,7 +490,7 @@ let get_user conn ~id = Sqlml.fetch_one (module Get_user) conn { Get_user.id }
 let get_user_exn conn ~id = Sqlml.or_raise (get_user conn ~id)
 
 module Search_users = struct
-  type params = { organization_id : Uuidm.t; email_pattern : string; limit : int }
+  type params = { organization_id : Uuidm.t; email_pattern : string; limit : int64 }
   type row = search_users_row
 
   let name = "SearchUsers"
@@ -144,14 +507,14 @@ module Search_users = struct
     [
       Sqlml.Value.of_uuid p.organization_id;
       Sqlml.Value.of_string p.email_pattern;
-      Sqlml.Value.of_int p.limit;
+      Sqlml.Value.of_int64 p.limit;
     ]
 
   let decode r : search_users_row =
     {
-      id = (Sqlml.Row.custom User_id.of_string) r 0;
-      email = Sqlml.Row.string r 1;
-      created_at = Sqlml.Row.ptime r 2;
+      id = (Sqlml.Row.option (Sqlml.Row.custom User_id.of_string)) r 0;
+      email = (Sqlml.Row.option Sqlml.Row.string) r 1;
+      created_at = (Sqlml.Row.option Sqlml.Row.ptime) r 2;
     }
 
   let columns = 3
@@ -186,9 +549,9 @@ module Count_posts_by_user = struct
 
   let decode r : count_posts_by_user_row =
     {
-      email = Sqlml.Row.string r 0;
+      email = (Sqlml.Row.option Sqlml.Row.string) r 0;
       title = (Sqlml.Row.option Sqlml.Row.string) r 1;
-      post_count = Sqlml.Row.int r 2;
+      post_count = Sqlml.Row.int64 r 2;
     }
 
   let columns = 3
@@ -226,13 +589,13 @@ module Get_user_full = struct
 
   let decode r : user_row =
     {
-      id = (Sqlml.Row.custom User_id.of_string) r 0;
-      organization_id = Sqlml.Row.uuid r 1;
-      email = Sqlml.Row.string r 2;
+      id = (Sqlml.Row.option (Sqlml.Row.custom User_id.of_string)) r 0;
+      organization_id = (Sqlml.Row.option Sqlml.Row.uuid) r 1;
+      email = (Sqlml.Row.option Sqlml.Row.string) r 2;
       name = (Sqlml.Row.option Sqlml.Row.string) r 3;
-      status = user_status_of_row r 4;
-      balance = Sqlml.Row.decimal r 5;
-      created_at = Sqlml.Row.ptime r 6;
+      status = (Sqlml.Row.option public_user_status_of_row) r 4;
+      balance = (Sqlml.Row.option Sqlml.Row.decimal) r 5;
+      created_at = (Sqlml.Row.option Sqlml.Row.ptime) r 6;
     }
 
   let columns = 7
@@ -271,7 +634,7 @@ module Create_user = struct
     organization_id : Uuidm.t;
     email : string;
     display_name : string option;
-    status : user_status;
+    status : public_user_status;
     balance : Decimal.t;
   }
 
@@ -287,7 +650,7 @@ module Create_user = struct
       Sqlml.Value.of_uuid p.organization_id;
       Sqlml.Value.of_string p.email;
       (Sqlml.Value.of_option Sqlml.Value.of_string) p.display_name;
-      user_status_to_value p.status;
+      public_user_status_to_value p.status;
       Sqlml.Value.of_decimal p.balance;
     ]
 
@@ -305,15 +668,25 @@ let create_user_exn conn ~id ~organization_id ~email ~status ~balance ?display_n
     (create_user conn ~id ~organization_id ~email ~status ~balance ?display_name ())
 
 module Get_users_by_ids = struct
-  type params = { ids : Uuidm.t list }
+  type params = { ids : Uuidm.t Sqlml.Pg_array.t }
   type row = get_users_by_ids_row
 
   let name = "GetUsersByIds"
   let sql (_ : params) = "SELECT id, email FROM users WHERE id = ANY($1)"
-  let encode (p : params) = [ (Sqlml.Value.of_list Sqlml.Value.Print.uuid) p.ids ]
+
+  let encode (p : params) =
+    [
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' Sqlml.Value.Print.uuid) x))
+        p.ids;
+    ]
 
   let decode r : get_users_by_ids_row =
-    { id = (Sqlml.Row.custom User_id.of_string) r 0; email = Sqlml.Row.string r 1 }
+    {
+      id = (Sqlml.Row.option (Sqlml.Row.custom User_id.of_string)) r 0;
+      email = (Sqlml.Row.option Sqlml.Row.string) r 1;
+    }
 
   let columns = 2
   let cardinality = Sqlml.Query.Many
@@ -328,9 +701,9 @@ module Put_tag_set = struct
   type params = {
     id : Uuidm.t;
     owner : Uuidm.t;
-    tags : string list;
-    scores : int list;
-    states : user_status list;
+    tags : string Sqlml.Pg_array.t;
+    scores : int Sqlml.Pg_array.t;
+    states : public_user_status Sqlml.Pg_array.t;
     meta : Yojson.Safe.t;
   }
 
@@ -347,9 +720,18 @@ module Put_tag_set = struct
     [
       Sqlml.Value.of_uuid p.id;
       Sqlml.Value.of_uuid p.owner;
-      (Sqlml.Value.of_list Sqlml.Value.Print.string) p.tags;
-      (Sqlml.Value.of_list Sqlml.Value.Print.int) p.scores;
-      (Sqlml.Value.of_list user_status_to_string) p.states;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' Sqlml.Value.Print.string) x))
+        p.tags;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' Sqlml.Value.Print.int) x))
+        p.scores;
+      (fun x ->
+        Sqlml.Value.of_string
+          ((Sqlml.Pg_array.to_string ~delimiter:',' public_user_status_to_string) x))
+        p.states;
       Sqlml.Value.of_json p.meta;
     ]
 
@@ -375,10 +757,21 @@ module Get_tag_set = struct
 
   let decode r : get_tag_set_row =
     {
-      tags = (Sqlml.Row.list Sqlml.Row.Elem.string) r 0;
-      scores = (Sqlml.Row.list Sqlml.Row.Elem.int) r 1;
-      states = (Sqlml.Row.list user_status_of_string) r 2;
-      meta = Sqlml.Row.json r 3;
+      tags =
+        (Sqlml.Row.option
+           (Sqlml.Row.custom
+              (Sqlml.Pg_array.of_string ~delimiter:',' Sqlml.Row.Elem.string)))
+          r 0;
+      scores =
+        (Sqlml.Row.option
+           (Sqlml.Row.custom (Sqlml.Pg_array.of_string ~delimiter:',' Sqlml.Row.Elem.int)))
+          r 1;
+      states =
+        (Sqlml.Row.option
+           (Sqlml.Row.custom
+              (Sqlml.Pg_array.of_string ~delimiter:',' public_user_status_of_string)))
+          r 2;
+      meta = (Sqlml.Row.option Sqlml.Row.json) r 3;
     }
 
   let columns = 4
@@ -403,12 +796,12 @@ module Get_user_strict = struct
 
   let decode r : get_user_strict_row =
     {
-      id = (Sqlml.Row.custom User_id.of_string) r 0;
-      email = Sqlml.Row.string r 1;
+      id = (Sqlml.Row.option (Sqlml.Row.custom User_id.of_string)) r 0;
+      email = (Sqlml.Row.option Sqlml.Row.string) r 1;
       name = (Sqlml.Row.option Sqlml.Row.string) r 2;
-      status = user_status_of_row r 3;
-      balance = Sqlml.Row.decimal r 4;
-      created_at = Sqlml.Row.ptime r 5;
+      status = (Sqlml.Row.option public_user_status_of_row) r 3;
+      balance = (Sqlml.Row.option Sqlml.Row.decimal) r 4;
+      created_at = (Sqlml.Row.option Sqlml.Row.ptime) r 5;
     }
 
   let columns = 6
@@ -424,9 +817,9 @@ module Find_users = struct
   type params = {
     org : Uuidm.t;
     email : string option;
-    status : user_status option;
+    status : public_user_status option;
     min_balance : Decimal.t option;
-    limit : int;
+    limit : int64;
   }
 
   type row = find_users_row
@@ -512,17 +905,17 @@ module Find_users = struct
       [
         [ Sqlml.Value.of_uuid p.org ];
         (match p.email with None -> [] | Some v -> [ Sqlml.Value.of_string v ]);
-        (match p.status with None -> [] | Some v -> [ user_status_to_value v ]);
+        (match p.status with None -> [] | Some v -> [ public_user_status_to_value v ]);
         (match p.min_balance with None -> [] | Some v -> [ Sqlml.Value.of_decimal v ]);
-        [ Sqlml.Value.of_int p.limit ];
+        [ Sqlml.Value.of_int64 p.limit ];
       ]
 
   let decode r : find_users_row =
     {
-      id = (Sqlml.Row.custom User_id.of_string) r 0;
-      email = Sqlml.Row.string r 1;
-      status = user_status_of_row r 2;
-      balance = Sqlml.Row.decimal r 3;
+      id = (Sqlml.Row.option (Sqlml.Row.custom User_id.of_string)) r 0;
+      email = (Sqlml.Row.option Sqlml.Row.string) r 1;
+      status = (Sqlml.Row.option public_user_status_of_row) r 2;
+      balance = (Sqlml.Row.option Sqlml.Row.decimal) r 3;
     }
 
   let columns = 4
@@ -582,9 +975,9 @@ module Get_booking = struct
 
   let decode r : get_booking_row =
     {
-      on_date = Sqlml.Row.date r 0;
-      at_time = Sqlml.Row.time_of_day r 1;
-      duration = Sqlml.Row.interval r 2;
+      on_date = (Sqlml.Row.option Sqlml.Row.date) r 0;
+      at_time = (Sqlml.Row.option Sqlml.Row.time_of_day) r 1;
+      duration = (Sqlml.Row.option Sqlml.Row.interval) r 2;
     }
 
   let columns = 3
@@ -603,7 +996,7 @@ module Has_meta_key = struct
   let name = "HasMetaKey"
   let sql (_ : params) = "SELECT id FROM tag_sets WHERE meta ? $1"
   let encode (p : params) = [ Sqlml.Value.of_string p.key ]
-  let decode r : has_meta_key_row = { id = Sqlml.Row.uuid r 0 }
+  let decode r : has_meta_key_row = { id = (Sqlml.Row.option Sqlml.Row.uuid) r 0 }
   let columns = 1
   let cardinality = Sqlml.Query.Many
 end
@@ -619,7 +1012,7 @@ module Bulk_add_users = struct
     organization_id : Uuidm.t;
     email : string;
     display_name : string option;
-    status : user_status;
+    status : public_user_status;
     balance : Decimal.t;
   }
 
@@ -634,7 +1027,7 @@ module Bulk_add_users = struct
       Sqlml.Value.of_uuid p.organization_id;
       Sqlml.Value.of_string p.email;
       (Sqlml.Value.of_option Sqlml.Value.of_string) p.display_name;
-      user_status_to_value p.status;
+      public_user_status_to_value p.status;
       Sqlml.Value.of_decimal p.balance;
     ]
 
@@ -651,7 +1044,7 @@ module Count_users_by_org = struct
   let name = "CountUsersByOrg"
   let sql (_ : params) = "SELECT count(*) AS \"n!\" FROM users WHERE organization_id = $1"
   let encode (p : params) = [ Sqlml.Value.of_uuid p.org ]
-  let decode r : count_users_by_org_row = { n = Sqlml.Row.int r 0 }
+  let decode r : count_users_by_org_row = { n = Sqlml.Row.int64 r 0 }
   let columns = 1
   let cardinality = Sqlml.Query.One_strict
 end

@@ -186,6 +186,25 @@ array literals). libpq-only: the Caqti driver returns a clear error naming the
 fix, because Caqti has no raw COPY surface and a row-at-a-time emulation would
 silently lose COPY's all-or-nothing semantics.
 
+## 8. Deeper compiler/type system — done
+
+- `Pg_type` graph, schema-qualified identity, version 2 snapshots, and conservative
+  result nullability.
+- Domains mapped through their bases, named composite records, lossless arrays,
+  built-in/custom ranges and multiranges, and full-width `int8`.
+- Real round trips through libpq, Caqti, and COPY; deterministic inference corpus
+  with independent PostgreSQL checks, compiled decoders, and pinned pGenie comparison.
+- PR tier: 1,000 cases. Weekly/manual extended tier: 10,000 cases. Known pGenie
+  limitations remain covered by PostgreSQL; unexplained disagreements fail.
+
+## 9. Stabilize 0.1 APIs, then exercise a real application — next
+
+Review runtime container constructors, generated naming/configuration, snapshot
+compatibility, and error contracts after the compiler gates pass. Then build a
+nontrivial application covering transactions, concurrency, search, and nested
+PostgreSQL types. The example data-layer programs are not that application, and
+this compiler work does not declare the APIs stable or publish a release.
+
 ## Not planned
 
 - SQLite. No Describe equivalent, so inference needs a wholly different

@@ -15,11 +15,22 @@ type field = {
 let custom_of_config cfg ~key ~pg_type =
   Config.custom cfg ~key ~pg_type
   |> Option.map (fun (c : Config.custom) ->
-      {
-        Typemap.c_ocaml = c.Config.ocaml;
-        c_of_string = c.Config.of_string;
-        c_to_string = c.Config.to_string;
-      })
+      { Typemap.c_ocaml = c.ocaml; c_of_string = c.of_string; c_to_string = c.to_string })
+
+let rename_type cfg id =
+  Option.value
+    (Config.renamed cfg (Pg_type.qualified id))
+    ~default:(Pg_type.generated_name id)
+
+let map_type cfg ~key pg ~nullable =
+  let custom id = custom_of_config cfg ~key:None ~pg_type:(Pg_type.qualified id) in
+  match
+    Option.bind key (fun key ->
+        custom_of_config cfg ~key:(Some key) ~pg_type:"__no_type__")
+  with
+  | Some c ->
+      Some (if nullable then Typemap.Option (Typemap.Custom c) else Typemap.Custom c)
+  | None -> Typemap.of_type ~custom ~rename:(rename_type cfg) pg ~nullable
 
 (* A field can be renamed by table.column, so two queries selecting the same
    column agree on what it is called. *)
@@ -30,11 +41,6 @@ let field_name cfg ~table ~name =
 
 let resolve_column cfg (q : Parse.t) (c : Describe.column) =
   let table = c.Describe.table in
-  let custom =
-    custom_of_config cfg
-      ~key:(Option.map (fun t -> t ^ "." ^ c.Describe.name) table)
-      ~pg_type:c.Describe.type_name
-  in
   let fname = field_name cfg ~table ~name:c.Describe.name in
   if not (Gen_util.is_lower_ident fname) then
     Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
@@ -44,15 +50,17 @@ let resolve_column cfg (q : Parse.t) (c : Describe.column) =
       (if List.mem fname Gen_util.ocaml_keywords then " (OCaml keyword)" else "")
   else
     match
-      Typemap.of_pg ?custom ~type_name:c.Describe.type_name
-        ~elem_type_name:c.Describe.elem_type_name ~enum_labels:c.Describe.enum_labels
-        ~nullable:c.Describe.nullable ()
+      map_type cfg
+        ~key:(Option.map (fun t -> t ^ "." ^ c.Describe.name) table)
+        c.pg_type ~nullable:c.nullable
     with
     | Some t -> Ok { fname; ftype = t; ord = c.Describe.table_col }
     | None ->
         Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
-          "column %S has Postgres type %S, which sqlml has no mapping for" c.Describe.name
-          c.Describe.type_name
+          "column %S has Postgres type %S, which sqlml has no mapping for (anonymous \
+           records must be cast to a named composite)"
+          c.Describe.name
+          (Pg_type.qualified c.Describe.pg_type.id)
 
 let block_param_names (q : Parse.t) =
   match q.Parse.dynamic with
@@ -61,15 +69,10 @@ let block_param_names (q : Parse.t) =
 
 let resolve_param cfg (q : Parse.t) (p : Describe.param) =
   let in_block = List.mem p.Describe.pname (block_param_names q) in
-  let custom =
-    custom_of_config cfg
-      ~key:(Some (q.Parse.name ^ "." ^ p.Describe.pname))
-      ~pg_type:p.Describe.ptype_name
-  in
   match
-    Typemap.of_pg ?custom ~type_name:p.Describe.ptype_name
-      ~elem_type_name:p.Describe.pelem_type_name ~enum_labels:p.Describe.penum_labels
-      ~nullable:p.Describe.pnullable ()
+    map_type cfg
+      ~key:(Some (q.Parse.name ^ "." ^ p.Describe.pname))
+      p.pg_type ~nullable:p.pnullable
   with
   (* a block parameter is optional by construction: Option in the record and
      an optional argument, but encoded by omission rather than as NULL *)
@@ -86,7 +89,8 @@ let resolve_param cfg (q : Parse.t) (p : Describe.param) =
   | None ->
       Diag.error ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name
         "parameter %S has Postgres type %S, which sqlml has no mapping for"
-        p.Describe.pname p.Describe.ptype_name
+        p.Describe.pname
+        (Pg_type.qualified p.Describe.pg_type.id)
 
 (* Where a generated row type name came from, so a collision can say which two
    things collided rather than blaming the wrong one. *)
@@ -112,7 +116,8 @@ let row_type_name cfg (d : Describe.described) =
   match d.Describe.model_table with
   | Some t ->
       let base = Option.value (Config.renamed cfg t) ~default:t in
-      (Parse.to_snake base ^ "_row", From_table t)
+      ( Parse.to_snake (String.map (fun c -> if c = '.' then '_' else c) base) ^ "_row",
+        From_table t )
   | None ->
       ( Parse.to_snake d.Describe.query.Parse.name ^ "_row",
         From_query d.Describe.query.Parse.name )
@@ -266,11 +271,8 @@ let collect_enums resolved =
   let tbl = Hashtbl.create 8 in
   let conflict = ref None in
   let bad_name = ref None in
-  let add ~ctx = function
-    | Typemap.Enum (n, labels)
-    | Typemap.Option (Typemap.Enum (n, labels))
-    | Typemap.Array (Typemap.Enum (n, labels))
-    | Typemap.Option (Typemap.Array (Typemap.Enum (n, labels))) -> (
+  let rec add ~ctx = function
+    | Typemap.Enum (n, labels) -> (
         if (not (Gen_util.is_lower_ident n)) && !bad_name = None then
           bad_name := Some (n, ctx);
         match Hashtbl.find_opt tbl n with
@@ -281,6 +283,8 @@ let collect_enums resolved =
                wrong data *)
             if !conflict = None then conflict := Some (n, ctx)
         | _ -> Hashtbl.replace tbl n labels)
+    | Typemap.Option t | Typemap.Array (t, _) | Typemap.Range t | Typemap.Multirange t ->
+        add ~ctx t
     | _ -> ()
   in
   List.iter
@@ -320,7 +324,9 @@ let collect_rows resolved =
                 order := (name, r.type_fields) :: !order;
                 go tl
             (* same name, same fields: the shared model doing its job *)
-            | Some (prev, _) when prev = r.type_fields -> go tl
+            | Some (prev, prev_origin) when prev = r.type_fields && prev_origin = origin
+              ->
+                go tl
             | Some (_, prev_origin) ->
                 Diag.error ~file:r.d.Describe.query.Parse.file
                   ~line:r.d.Describe.query.Parse.line
@@ -332,3 +338,91 @@ let collect_rows resolved =
   go resolved
 
 (* ---------- emitting ---------- *)
+
+let collect_composites cfg described =
+  let seen = Hashtbl.create 16 and result = ref [] in
+  let rec visit pg =
+    match map_type cfg ~key:None pg ~nullable:false with
+    | None ->
+        Diag.error "unsupported nested PostgreSQL type %s"
+          (Pg_type.qualified pg.Pg_type.id)
+    | Some (Typemap.Custom _) -> Ok ()
+    | Some _ when Hashtbl.mem seen pg.id -> Ok ()
+    | Some _ -> (
+        Hashtbl.add seen pg.id ();
+        let child id = visit (Pg_type.at pg id) in
+        match Pg_type.kind pg with
+        | Pg_type.Composite attrs ->
+            let* fields =
+              map_result
+                (fun (a : Pg_type.attribute) ->
+                  let typ = Pg_type.at pg a.typ in
+                  let key = Some (Pg_type.qualified pg.id ^ "." ^ a.name) in
+                  let* () =
+                    match map_type cfg ~key typ ~nullable:false with
+                    | Some (Typemap.Custom _) -> Ok ()
+                    | _ -> visit typ
+                  in
+                  let fname =
+                    Option.value
+                      (Config.renamed cfg (Pg_type.qualified pg.id ^ "." ^ a.name))
+                      ~default:a.name
+                  in
+                  if not (Gen_util.is_lower_ident fname) then
+                    Diag.error "composite %s field %S needs a rename"
+                      (Pg_type.qualified pg.id) fname
+                  else
+                    match map_type cfg ~key typ ~nullable:true with
+                    | Some ftype -> Ok { fname; ftype; ord = a.number }
+                    | None ->
+                        Diag.error "composite %s field %s has unsupported type %s"
+                          (Pg_type.qualified pg.id) a.name (Pg_type.qualified typ.id))
+                attrs
+            in
+            if
+              List.length fields
+              <> List.length
+                   (List.sort_uniq String.compare (List.map (fun f -> f.fname) fields))
+            then Diag.error "duplicate composite field in %s" (Pg_type.qualified pg.id)
+            else (
+              result := (rename_type cfg pg.id, fields) :: !result;
+              Ok ())
+        | Pg_type.Array a -> child a.element
+        | Pg_type.Domain d -> child d.base
+        | Pg_type.Range id | Pg_type.Multirange id -> child id
+        | _ -> Ok ())
+  in
+  let* _ =
+    map_result
+      (fun (d : Describe.described) ->
+        let q = d.query in
+        let keep key pg =
+          match map_type cfg ~key pg ~nullable:false with
+          | Some (Typemap.Custom _) -> None
+          | _ -> Some pg
+        in
+        let roots =
+          List.filter_map
+            (fun (c : Describe.column) ->
+              keep (Option.map (fun t -> t ^ "." ^ c.name) c.table) c.pg_type)
+            d.columns
+          @ List.filter_map
+              (fun (p : Describe.param) -> keep (Some (q.name ^ "." ^ p.pname)) p.pg_type)
+              d.params
+        in
+        Result.map_error
+          (fun e ->
+            { e with Diag.file = Some q.file; line = Some q.line; query = Some q.name })
+          (map_result visit roots))
+      described
+  in
+  Ok (List.sort compare !result)
+
+let enums_in_fields fields =
+  let rec walk = function
+    | Typemap.Enum (n, l) -> [ (n, l) ]
+    | Typemap.Option t | Typemap.Array (t, _) | Typemap.Range t | Typemap.Multirange t ->
+        walk t
+    | _ -> []
+  in
+  List.concat_map (fun f -> walk f.ftype) fields

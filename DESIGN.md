@@ -14,7 +14,7 @@ Working end to end on stock OCaml 5.5.0: runtime, generator, CLI
 (`generate`/`check`/`describe`), libpq driver, Caqti/Eio driver with pooling,
 transactions with isolation/savepoints/retry, streaming, SQLSTATE
 classification, `sqlml.toml` renames and custom types, ocamlformat-clean
-output. Roadmap items 1–5 shipped; see ROADMAP.md.
+output. The compiler now uses a transitive PostgreSQL type graph; see ROADMAP.md.
 
 Tests: `dune test` (unit: runtime, generated output, sqlstate table) plus
 `example/e2e.exe` (libpq against PostgreSQL 18), `example/app.exe` and
@@ -286,32 +286,67 @@ different needs.
   plus the schema, most likely).
 
 Decided since this section was first written: named parameters are rewritten to
-`$n` by the parser and become the `params` record fields; nullability comes
-from `pg_attribute.attnotnull` with `!`/`?` alias overrides; and Eio entered
+`$n` by the parser and become the `params` record fields; result nullability defaults to optional with explicit `!`/`?` alias overrides; and Eio entered
 through the Caqti driver only — the runtime stays synchronous and IO-free.
 
-## Arrays
+## PostgreSQL type graph and container codecs
 
-`text[]`, `int[]`, `uuid[]` and arrays of enums map to OCaml lists. Detection is
-from `pg_type`: an array has `typcategory = 'A'` and a `typelem` pointing at its
-element type, and for an array of an enum the labels live on the element.
+`Pg_type` separates database identity from the OCaml representation selected by
+`Typemap`. A structured schema/name pair identifies each catalog node; domain,
+array, composite, range, and multirange dependencies are references into a
+registry. Discovery memoizes OIDs only within the current connection. Visiting
+nodes are registered before descending, so named recursion terminates. The
+version 2 snapshot stores a deterministic registry and root references, never
+OID identities. Column type modifiers remain separate use-site metadata.
 
-Arrays also give you dynamic IN lists, which is the common reason to want them:
+Domains retain their base, constraints, and catalog NOT NULL metadata. Their
+OCaml representation defaults to the base codec; PostgreSQL validates constraints.
+A query may erase a domain to its base type before Describe reports it. Origin
+metadata must not be used to invent a domain identity the server did not report.
 
-```sql
--- name: GetUsersByIds :many
-SELECT id, email FROM users WHERE id = ANY(:ids);
-```
-```ocaml
-val get_users_by_ids : Sqlml.conn -> ids:Uuidm.t list -> (get_users_by_ids_row list, _) result
-```
+All result columns are nullable unless the author uses `!`. A table's NOT NULL
+constraint does not survive null extension through joins, and Describe does not
+supply a proof for general SQL expressions. Automatic proofs are deferred. An
+explicit assertion can fail at decode time; it is not an inferred guarantee.
+Shared model names include schema identity and require a complete, nonduplicated
+projection. Dynamic variants must agree on result shape and parameter identities
+by original parameter name after inactive parameters are omitted.
 
-Values cross as Postgres's `{a,b,c}` literal, so `Row.list` and `Value.of_list`
-implement its quoting rules: an element is quoted when it is empty, contains a
-delimiter, brace, quote, backslash or whitespace, or would otherwise read back
-as the literal NULL. The round-trip is tested against all of those.
+Generated enums, named composites, and shared models use schema-prefixed names.
+Configuration can replace those names. Ambiguous shorthand keys and generated
+name collisions fail before rendering. Composite fields are optional independently
+of constraints on the originating table. Named recursive declarations and codecs
+are emitted as recursive groups; a NULL composite is distinct from a record whose
+fields are all NULL. Anonymous `record` requires an explicit named cast.
 
-Two deliberate limits. **Nested arrays are rejected** rather than flattened.
-**A NULL element is an error**, because Postgres does not report whether array
-elements are nullable — inventing an `option` there would be guessing, and
-silently dropping it would be worse.
+Arrays use `Sqlml.Pg_array.t`: dimensions and lower bounds plus flattened optional
+elements. PostgreSQL dimensions are a property of each value, not reliably of the
+column type. Constructor validation rejects mismatched sizes, excessive dimensions,
+and overflow. A plain-list adapter accepts only representable arrays. The old
+`Row.list` / `Value.of_list` helpers remain available for existing handwritten code;
+new generated code uses the lossless representation.
+
+Ranges preserve empty, unbounded, inclusive, and exclusive bounds. Multiranges
+preserve the server's ordered ranges; canonicalization belongs to PostgreSQL.
+Scalar codec limits still apply to endpoints. Container grammars share escaping
+primitives but keep their different NULL conventions. Bytea is decoded from hex
+or escape output and printed as hex, including inside containers. `int8` uses
+`int64` throughout so the full PostgreSQL range fits.
+
+Exact custom mappings replace a complete value. Without an exact mapping,
+resolution descends through domains and container elements. Codecs and generated
+signatures depend only on `sqlml`; the driver protocol has not changed.
+
+## Inference verification
+
+The corpus crosses SQL shapes with PostgreSQL types and compares sqlml metadata
+against separate libpq Prepare/Describe calls and independently queried catalogs.
+It also executes each query and compiles generated decoders against the exact
+returned text/NULL rows. Execution can disprove a non-null claim, never prove it.
+
+pGenie is a second implementation, not an oracle of truth. Its pinned 0.15.0
+release has explicit unsupported categories for domains, custom ranges, and
+composites with dropped attributes. Same-named custom types require separate
+pGenie projects. Differences in nullability precision and array dimensionality
+policy do not change identity comparisons. Unknown failures remain fatal.
+See integration/README.md for replay, reduction, and CI gates.

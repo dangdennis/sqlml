@@ -6,6 +6,9 @@
     [Q.row] project straight out of the argument rather than escaping as type variables
     through a [with type] witness. *)
 
+module Pg_array = Pg_array
+module Range = Range
+module Composite = Composite
 module Value = Value
 module Error = Error
 module Row = Row

@@ -48,24 +48,28 @@ let test_crud conn =
   | None -> check "get_user finds the row" false
   | Some u ->
       check "get_user finds the row" true;
-      check "uuid round-trips" (Uuidm.equal u.Db.id id);
-      check "text round-trips" (u.Db.email = "e2e@example.com");
+      check "uuid round-trips" (Uuidm.equal (Option.get u.Db.id) id);
+      check "text round-trips" (Option.get u.Db.email = "e2e@example.com");
       check "nullable set -> Some" (u.Db.name = Some "End To End");
-      check "enum round-trips" (u.Db.status = Db.Active);
-      check "numeric round-trips" (Decimal.to_string u.Db.balance = "42.50");
-      check "timestamptz decodes" (Ptime.to_year u.Db.created_at >= 2025));
+      check "enum round-trips" (Option.get u.Db.status = Db.Active);
+      check "numeric round-trips" (Decimal.to_string (Option.get u.Db.balance) = "42.50");
+      check "timestamptz decodes" (Ptime.to_year (Option.get u.Db.created_at) >= 2025));
 
   (* the shared model type, over the wire *)
   (match Db.get_user_full_exn conn ~id with
-  | Some u -> check "shared users_row over the wire" (u.Db.email = "e2e@example.com")
+  | Some u ->
+      check "shared users_row over the wire" (Option.get u.Db.email = "e2e@example.com")
   | None -> check "shared users_row over the wire" false);
 
   (* :many with ILIKE and a bigint LIMIT *)
   let found =
-    Db.search_users_exn conn ~organization_id:org ~email_pattern:"%@example.com" ~limit:10
+    Db.search_users_exn conn ~organization_id:org ~email_pattern:"%@example.com"
+      ~limit:10L
   in
   check ":many returns the row"
-    (List.exists (fun (r : Db.search_users_row) -> r.Db.email = "e2e@example.com") found);
+    (List.exists
+       (fun (r : Db.search_users_row) -> Option.get r.Db.email = "e2e@example.com")
+       found);
 
   (* omitting the optional argument must write a real NULL *)
   check "update" (Db.set_display_name_exn conn ~id () = 1);
@@ -79,12 +83,12 @@ let test_crud conn =
   let counts = Db.count_posts_by_user_exn conn in
   (match
      List.find_opt
-       (fun (r : Db.count_posts_by_user_row) -> r.Db.email = "e2e@example.com")
+       (fun (r : Db.count_posts_by_user_row) -> Option.get r.Db.email = "e2e@example.com")
        counts
    with
   | Some r ->
       check "LEFT JOIN title is None" (r.Db.title = None);
-      check "! override gives a plain int" (r.Db.post_count = 0)
+      check "! override gives a plain int" (r.Db.post_count = 0L)
   | None -> check "LEFT JOIN row present" false);
 
   check "delete" (Db.delete_user_exn conn ~id = 1);
@@ -133,7 +137,7 @@ let test_transactions conn =
    with
   | Ok (Some u) ->
       check "generated query inside tx sees its own write"
-        (u.Db.email = "in-tx@example.com")
+        (Option.get u.Db.email = "in-tx@example.com")
   | _ -> check "generated query inside tx sees its own write" false);
   ignore (Db.delete_user_exn conn ~id);
   ()
@@ -149,26 +153,36 @@ let test_arrays conn =
   in
   let meta = Yojson.Safe.from_string {|{"nested":{"a":[1,2,null]},"s":"x"}|} in
   check "array insert"
-    (Db.put_tag_set_exn conn ~id:tag_id ~owner:org ~tags:tricky ~scores:[ 1; -2; 30 ]
-       ~states:[ Db.Active; Db.Banned; Db.Active ]
+    (Db.put_tag_set_exn conn ~id:tag_id ~owner:org
+       ~tags:(Sqlml.Pg_array.of_list tricky)
+       ~scores:(Sqlml.Pg_array.of_list [ 1; -2; 30 ])
+       ~states:(Sqlml.Pg_array.of_list [ Db.Active; Db.Banned; Db.Active ])
        ~meta
     = 1);
   (match Db.get_tag_set_exn conn ~id:tag_id with
   | None -> check "array round-trip" false
   | Some t ->
-      check "text[] round-trips exactly" (t.Db.tags = tricky);
-      check "int[] round-trips" (t.Db.scores = [ 1; -2; 30 ]);
+      check "text[] round-trips exactly"
+        (Sqlml.Pg_array.to_list (Option.get t.Db.tags) = tricky);
+      check "int[] round-trips"
+        (Sqlml.Pg_array.to_list (Option.get t.Db.scores) = [ 1; -2; 30 ]);
       check "enum[] decodes to variants"
-        (t.Db.states = [ Db.Active; Db.Banned; Db.Active ]);
-      check "jsonb round-trips (structurally)" (json_sorted t.Db.meta = json_sorted meta));
+        (Sqlml.Pg_array.to_list (Option.get t.Db.states)
+        = [ Db.Active; Db.Banned; Db.Active ]);
+      check "jsonb round-trips (structurally)"
+        (json_sorted (Option.get t.Db.meta) = json_sorted meta));
 
   (* empty arrays are not the same as NULL *)
   let empty_id = uuid "8b2c3d4e-5f6a-4b7c-9d0e-1f2a3b4c5d6e" in
   ignore
-    (Db.put_tag_set_exn conn ~id:empty_id ~owner:org ~tags:[] ~scores:[] ~states:[]
+    (Db.put_tag_set_exn conn ~id:empty_id ~owner:org ~tags:(Sqlml.Pg_array.of_list [])
+       ~scores:(Sqlml.Pg_array.of_list []) ~states:(Sqlml.Pg_array.of_list [])
        ~meta:(`Assoc []));
   (match Db.get_tag_set_exn conn ~id:empty_id with
-  | Some t -> check "empty array round-trips" (t.Db.tags = [] && t.Db.scores = [])
+  | Some t ->
+      check "empty array round-trips"
+        (Sqlml.Pg_array.to_list (Option.get t.Db.tags) = []
+        && Sqlml.Pg_array.to_list (Option.get t.Db.scores) = [])
   | None -> check "empty array round-trips" false);
 
   (* an array parameter: = ANY(...) as a dynamic IN list *)
@@ -180,10 +194,10 @@ let test_arrays conn =
         (Db.create_user_exn conn ~id:i ~organization_id:org ~email:e ~status:Db.Active
            ~balance:(Decimal.of_string "0.00") ()))
     [ (a, "any-a@example.com"); (b, "any-b@example.com") ];
-  let found = Db.get_users_by_ids_exn conn ~ids:[ a; b ] in
+  let found = Db.get_users_by_ids_exn conn ~ids:(Sqlml.Pg_array.of_list [ a; b ]) in
   check "= ANY(array param) matches both" (List.length found = 2);
   check "= ANY with empty array returns nothing"
-    (Db.get_users_by_ids_exn conn ~ids:[] = []);
+    (Db.get_users_by_ids_exn conn ~ids:(Sqlml.Pg_array.of_list []) = []);
   List.iter (fun i -> ignore (Db.delete_user_exn conn ~id:i)) [ a; b ];
   ()
 
@@ -224,7 +238,8 @@ let test_sqlstate conn =
   let fk =
     Db.put_tag_set conn
       ~id:(uuid "bbbbbbbb-0000-4000-8000-000000000001")
-      ~owner:org ~tags:[] ~scores:[] ~states:[] ~meta:(`Assoc [])
+      ~owner:org ~tags:(Sqlml.Pg_array.of_list []) ~scores:(Sqlml.Pg_array.of_list [])
+      ~states:(Sqlml.Pg_array.of_list []) ~meta:(`Assoc [])
   in
   ignore fk;
   ignore (Db.delete_user_exn conn ~id:a2);
@@ -330,7 +345,9 @@ let test_one conn =
     (Db.create_user_exn conn ~id:s1 ~organization_id:org ~email:"strict@example.com"
        ~status:Db.Active ~balance:(Decimal.of_string "0.00") ());
   (match Db.get_user_strict conn ~id:s1 with
-  | Ok u -> check ":one! returns the row unwrapped" (u.Db.email = "strict@example.com")
+  | Ok u ->
+      check ":one! returns the row unwrapped"
+        (Option.get u.Db.email = "strict@example.com")
   | Error _ -> check ":one! returns the row unwrapped" false);
   ignore (Db.delete_user_exn conn ~id:s1);
   (match Db.get_user_strict conn ~id:s1 with
@@ -360,7 +377,7 @@ let test_streaming conn =
      Sqlml.fetch_fold
        (module Db.Search_users)
        ~batch:2 conn
-       { Db.Search_users.organization_id = org; email_pattern = "stream-%"; limit = 100 }
+       { Db.Search_users.organization_id = org; email_pattern = "stream-%"; limit = 100L }
        ~init:0
        ~f:(fun n _ -> n + 1)
    with
@@ -378,10 +395,10 @@ let test_streaming conn =
            {
              Db.Search_users.organization_id = org;
              email_pattern = "stream-%";
-             limit = 100;
+             limit = 100L;
            }
            ~init:[]
-           ~f:(fun acc r -> r.Db.email :: acc))
+           ~f:(fun acc r -> Option.get r.Db.email :: acc))
    with
   | Ok emails -> check "streaming inside a transaction" (List.length emails = 5)
   | Error e ->
@@ -437,12 +454,13 @@ let test_optional_blocks conn =
   mk d3 "dyn-c@other.org" Db.Banned "500.00";
 
   let count ?email ?status ?min_balance () =
-    match Db.find_users conn ~org ~limit:100 ?email ?status ?min_balance () with
+    match Db.find_users conn ~org ~limit:100L ?email ?status ?min_balance () with
     | Ok rows ->
         List.length
           (List.filter
              (fun (r : Db.find_users_row) ->
-               String.length r.Db.email >= 4 && String.sub r.Db.email 0 4 = "dyn-")
+               String.length (Option.get r.Db.email) >= 4
+               && String.sub (Option.get r.Db.email) 0 4 = "dyn-")
              rows)
     | Error e ->
         print_endline (Sqlml.Error.to_string e);
@@ -471,10 +489,11 @@ let test_date_time_interval conn =
   ignore (Db.put_booking_exn conn ~id:bk ~on_date:(2026, 7, 30) ~at_time ~duration);
   (match Db.get_booking conn ~id:bk with
   | Ok b ->
-      check "date round-trips" (b.Db.on_date = (2026, 7, 30));
-      check "time round-trips to the microsecond" (Ptime.Span.equal b.Db.at_time at_time);
+      check "date round-trips" (Option.get b.Db.on_date = (2026, 7, 30));
+      check "time round-trips to the microsecond"
+        (Ptime.Span.equal (Option.get b.Db.at_time) at_time);
       check "interval round-trips (postgres style out)"
-        (Sqlml.Interval.equal b.Db.duration duration)
+        (Sqlml.Interval.equal (Option.get b.Db.duration) duration)
   | Error e ->
       print_endline (Sqlml.Error.to_string e);
       check "date/time/interval round-trip" false);
@@ -484,9 +503,9 @@ let test_date_time_interval conn =
   ignore (Db.put_booking_exn conn ~id:bk ~on_date:(2024, 2, 29) ~at_time ~duration:weird);
   (match Db.get_booking conn ~id:bk with
   | Ok b ->
-      check "leap-day date" (b.Db.on_date = (2024, 2, 29));
+      check "leap-day date" (Option.get b.Db.on_date = (2024, 2, 29));
       check "negative mixed interval round-trips"
-        (Sqlml.Interval.equal b.Db.duration weird)
+        (Sqlml.Interval.equal (Option.get b.Db.duration) weird)
   | Error e ->
       print_endline (Sqlml.Error.to_string e);
       check "negative interval round-trip" false);
@@ -523,7 +542,7 @@ let test_copy conn =
   | Error e ->
       print_endline (Sqlml.Error.to_string e);
       check "copy reports every row written" false);
-  check "count agrees" ((Db.count_users_by_org_exn conn ~org).Db.n = total);
+  check "count agrees" ((Db.count_users_by_org_exn conn ~org).Db.n = Int64.of_int total);
   (* the hostile cells round-trip byte-for-byte *)
   (match Db.get_user_exn conn ~id:(cid 0) with
   | Some u -> check "tab/newline/backslash round-trip" (u.Db.name = name_of 0)
@@ -540,7 +559,7 @@ let test_copy conn =
   | Error e -> check "bad copy aborts with sqlstate" (Sqlml.Error.sqlstate e <> None)
   | Ok _ -> check "bad copy aborts with sqlstate" false);
   check "count unchanged after failed copy"
-    ((Db.count_users_by_org_exn conn ~org).Db.n = total);
+    ((Db.count_users_by_org_exn conn ~org).Db.n = Int64.of_int total);
   ignore (Db.delete_users_by_org_exn conn ~org)
 
 let sections =
@@ -557,6 +576,7 @@ let sections =
     ("optional_blocks", test_optional_blocks);
     ("date_time_interval", test_date_time_interval);
     ("copy", test_copy);
+    ("compiler", Compiler_checks.run ~copy:true ~check ~id:901);
   ]
 
 (* Each section runs under a try so one crash still lets the rest report; a

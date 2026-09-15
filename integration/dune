@@ -1,0 +1,4 @@
+(executable
+ (name inference)
+ (modules inference)
+ (libraries sqlml_gen pq sqlml unix yojson))

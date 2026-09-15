@@ -89,3 +89,28 @@ let custom t ~key ~pg_type =
   match Option.bind key (fun k -> List.assoc_opt k t.customs) with
   | Some _ as c -> c
   | None -> List.assoc_opt pg_type t.customs
+
+let qualify t ~names =
+  let names = List.sort_uniq String.compare names in
+  let short s =
+    match String.index_opt s '.' with
+    | None -> s
+    | Some i -> String.sub s (i + 1) (String.length s - i - 1)
+  in
+  let expand entries =
+    fold_result
+      (fun acc (key, v) ->
+        if List.mem key names then Ok ((key, v) :: acc)
+        else
+          match List.filter (fun n -> short n = key) names with
+          | [] -> Ok ((key, v) :: acc)
+          | [ name ] ->
+              if List.mem_assoc name entries then Ok acc else Ok ((name, v) :: acc)
+          | candidates ->
+              Diag.error "ambiguous configuration key %S: use one of %s" key
+                (String.concat ", " candidates))
+      [] entries
+  in
+  let* rename = expand t.rename in
+  let* customs = expand t.customs in
+  Ok { t with rename; customs }

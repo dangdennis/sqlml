@@ -19,6 +19,7 @@ let emit_enum_types b enums =
   List.iter
     (fun (name, labels) ->
       bprintf b "type %s =\n" name;
+      if labels = [] then bprintf b "  |\n";
       List.iter (fun l -> bprintf b "  | %s\n" (Typemap.constructor_of_label l)) labels;
       bprintf b "\n")
     enums
@@ -267,27 +268,84 @@ let header src =
     \   Regenerate with: sqlml generate *)\n\n"
     src
 
-let source ~src ~enums ~rows resolved =
+let emit_composites b composites =
+  List.iteri
+    (fun i (name, fields) ->
+      bprintf b "%s %s = " (if i = 0 then "type" else "and") name;
+      if fields = [] then bprintf b "unit\n"
+      else begin
+        bprintf b "{\n";
+        List.iter
+          (fun f -> bprintf b "  %s : %s;\n" f.fname (Typemap.ocaml_type f.ftype))
+          fields;
+        bprintf b "}\n"
+      end)
+    composites;
+  if composites <> [] then bprintf b "\n"
+
+let emit_composite_codecs b composites =
+  List.iteri
+    (fun i (name, fields) ->
+      bprintf b "%s %s_of_string s : %s =\n"
+        (if i = 0 then "let rec" else "and")
+        name name;
+      bprintf b "  let fields = Sqlml.Composite.of_string s in\n";
+      bprintf b "  if Array.length fields <> %d then invalid_arg %S;\n"
+        (if fields = [] then 1 else List.length fields)
+        (name ^ ": field count");
+      if fields = [] then bprintf b "  ()\n"
+      else begin
+        bprintf b "  {\n";
+        List.iteri
+          (fun j f ->
+            bprintf b "    %s = Sqlml.Composite.field %s fields %d;\n" f.fname
+              (Typemap.elem_parser (Typemap.strip_option f.ftype))
+              j)
+          fields;
+        bprintf b "  }\n"
+      end;
+      bprintf b "and %s_to_string (v : %s) =\n" name name;
+      if fields = [] then bprintf b "  let () = v in \"()\"\n"
+      else begin
+        bprintf b "  Sqlml.Composite.to_string [|\n";
+        List.iter
+          (fun f ->
+            bprintf b "    Option.map %s v.%s;\n"
+              (Typemap.elem_printer (Typemap.strip_option f.ftype))
+              f.fname)
+          fields;
+        bprintf b "  |]\n"
+      end)
+    composites;
+  if composites <> [] then begin
+    bprintf b "\n";
+    List.iter
+      (fun (n, _) -> bprintf b "let _ = %s_of_string, %s_to_string\n" n n)
+      composites
+  end
+
+let source ~src ~enums ~composites ~rows resolved =
   let mli = Buffer.create 4096 in
   let ml = Buffer.create 8192 in
   Buffer.add_string mli (header src);
   Buffer.add_string ml (header src);
   (* generated row records have fields the caller may not read; warning 69 fires
      in the defining module, which the caller cannot fix *)
-  Buffer.add_string ml "[@@@warning \"-69\"]\n\n";
+  Buffer.add_string ml "[@@@warning \"-69-30-39\"]\n\n";
   emit_enum_types mli enums;
   emit_enum_types ml enums;
   List.iter
     (fun (name, labels) ->
       bprintf mli "val %s_to_string : %s -> string\n\n" name name;
-      bprintf ml "let %s_to_string = function\n" name;
+      bprintf ml "let %s_to_string (v : %s) = match v with\n" name name;
+      if labels = [] then bprintf ml "  | _ -> .\n";
       List.iter
         (fun l -> bprintf ml "  | %s -> %S\n" (Typemap.constructor_of_label l) l)
         labels;
       bprintf ml "\n";
       bprintf ml "let %s_to_value x = Sqlml.Value.of_string (%s_to_string x)\n" name name;
       bprintf ml "let _ = %s_to_value\n\n" name;
-      bprintf ml "let %s_of_string = function\n" name;
+      bprintf ml "let %s_of_string s : %s = match s with\n" name name;
       List.iter
         (fun l -> bprintf ml "  | %S -> %s\n" l (Typemap.constructor_of_label l))
         labels;
@@ -297,8 +355,12 @@ let source ~src ~enums ~rows resolved =
       bprintf ml "  try %s_of_string s\n" name;
       bprintf ml
         "  with _ -> raise (Sqlml.Row.Bad { column = i; expected = %S; got = s })\n\n"
-        name)
+        name;
+      bprintf ml "let _ = %s_of_row\n\n" name)
     enums;
+  emit_composites mli composites;
+  emit_composites ml composites;
+  emit_composite_codecs ml composites;
   List.iter
     (fun (name, fields) ->
       emit_record mli name fields;

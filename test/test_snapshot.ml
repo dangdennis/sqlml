@@ -89,6 +89,17 @@ let () =
       check "output is deterministic"
         (read_file (Filename.concat dir Snapshot.filename) = first));
 
+  with_dir (fun dir ->
+      let path = Filename.concat dir Snapshot.filename in
+      write_file path "{\"format_version\":1}";
+      match
+        Snapshot.describe_offline ~queries_dir:dir ~config:Config.empty [ d_static.query ]
+      with
+      | Error d ->
+          check "v1 snapshot requires regeneration"
+            (contains (Diag.to_string d) "re-run `sqlml snapshot`")
+      | Ok _ -> check "v1 snapshot requires regeneration" false);
+
   (* ---------- staleness is loud and names the culprit ---------- *)
   with_dir (fun dir ->
       match Snapshot.describe_offline ~queries_dir:dir ~config:Config.empty [] with

@@ -18,6 +18,7 @@ let type_name = function
 
 let of_bool b = Bool b
 let of_int i = Int i
+let of_int64 i = Text (Int64.to_string i)
 let of_float f = Float f
 let of_string s = Text s
 let of_octets s = Octets s
@@ -81,8 +82,14 @@ let array_literal elements =
    elements need a plain [_ -> string] because they are spliced into a literal. *)
 module Print = struct
   let string (s : string) = s
-  let octets = string
+
+  let octets s =
+    "\\x"
+    ^ String.concat ""
+        (List.init (String.length s) (fun i -> Printf.sprintf "%02x" (Char.code s.[i])))
+
   let int = string_of_int
+  let int64 = Int64.to_string
   let float f = Printf.sprintf "%.17g" f
   let bool b = if b then "t" else "f"
   let uuid u = Uuidm.to_string u

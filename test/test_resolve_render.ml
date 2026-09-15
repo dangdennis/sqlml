@@ -71,7 +71,7 @@ let () =
   | Error _ -> check "invalid enum typname rejected" true
   | Ok _ -> check "invalid enum typname rejected" false);
   check "consistent enums collect"
-    (Resolve.collect_enums [ r1; r1 ] = Ok [ ("status", [ "a"; "b" ]) ]);
+    (Resolve.collect_enums [ r1; r1 ] = Ok [ ("public_status", [ "a"; "b" ]) ]);
 
   (* ---------- row-type collision names both origins ---------- *)
   let users_cols =

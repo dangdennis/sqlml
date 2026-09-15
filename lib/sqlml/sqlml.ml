@@ -23,6 +23,9 @@
    explicitness costs the user nothing -- which is exactly why *explicits* are a
    better fit here than implicits. *)
 
+module Pg_array = Pg_array
+module Range = Range
+module Composite = Composite
 module Value = Value
 module Error = Error
 module Row = Row

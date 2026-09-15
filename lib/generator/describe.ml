@@ -9,21 +9,18 @@ type override =
 
 type column = {
   name : string; (* alias with any !/? stripped *)
-  type_name : string;
-  elem_type_name : string option (* Some when the type is an array *);
+  pg_type : Pg_type.t;
+  typmod : int;
   table : string option; (* relname, when the column comes from a table *)
   table_oid : int; (* 0 when not a plain column reference *)
   table_col : int; (* attnum; 0 when table_oid is 0 *)
   nullable : bool;
-  enum_labels : string list (* non-empty when the type is an enum *);
 }
 
 type param = {
   index : int;
   pname : string;
-  ptype_name : string;
-  pelem_type_name : string option;
-  penum_labels : string list;
+  pg_type : Pg_type.t;
   pnullable : bool; (* from a trailing ? on the placeholder; see Parse.param *)
 }
 
@@ -66,71 +63,6 @@ let split_override name =
 
 let quote_ints xs = String.concat "," (List.map string_of_int xs)
 
-(* name, element type name (arrays only), and element oid, in one pass. An array
-   type in Postgres has typcategory 'A' and a typelem pointing at its element
-   type -- text[] is a distinct type named _text whose typelem is text. *)
-type type_info = { tname : string; telem_name : string option; telem_oid : int }
-
-let type_infos conn oids =
-  if oids = [] then Ok []
-  else
-    let* rows =
-      Pq.query conn
-        (Printf.sprintf
-           "select t.oid, t.typname, t.typcategory, coalesce(e.typname, ''), \
-            coalesce(t.typelem, 0) from pg_type t left join pg_type e on e.oid = \
-            t.typelem where t.oid in (%s)"
-           (quote_ints oids))
-    in
-    Ok
-      (List.map
-         (fun r ->
-           let is_array = r.(2) = "A" && r.(4) <> "0" in
-           ( int_of_string r.(0),
-             {
-               tname = r.(1);
-               telem_name = (if is_array then Some r.(3) else None);
-               telem_oid = (if is_array then int_of_string r.(4) else 0);
-             } ))
-         rows)
-
-let enum_labels conn oids =
-  if oids = [] then Ok []
-  else
-    let* rows =
-      Pq.query conn
-        (Printf.sprintf
-           "select enumtypid, enumlabel from pg_enum where enumtypid in (%s) order by \
-            enumtypid, enumsortorder"
-           (quote_ints oids))
-    in
-    let tbl = Hashtbl.create 8 in
-    List.iter
-      (fun r ->
-        let k = int_of_string r.(0) in
-        Hashtbl.replace tbl k
-          (Hashtbl.find_opt tbl k |> Option.value ~default:[] |> fun l -> r.(1) :: l))
-      rows;
-    Ok (Hashtbl.fold (fun k v acc -> (k, List.rev v) :: acc) tbl [])
-
-(* attnotnull for every (table, column) pair we saw *)
-let not_null_map conn pairs =
-  let pairs = List.filter (fun (t, c) -> t <> 0 && c > 0) pairs in
-  if pairs = [] then Ok []
-  else
-    let clause =
-      pairs |> List.map (fun (t, c) -> Printf.sprintf "(%d,%d)" t c) |> String.concat ","
-    in
-    let* rows =
-      Pq.query conn
-        (Printf.sprintf
-           "select attrelid, attnum, attnotnull from pg_attribute where (attrelid, \
-            attnum) in (%s)"
-           clause)
-    in
-    Ok
-      (List.map (fun r -> ((int_of_string r.(0), int_of_string r.(1)), r.(2) = "t")) rows)
-
 (* table name + its live column count, for shared model detection *)
 let table_info conn oids =
   if oids = [] then Ok []
@@ -138,9 +70,10 @@ let table_info conn oids =
     let* rows =
       Pq.query conn
         (Printf.sprintf
-           "select c.oid, c.relname, (select count(*) from pg_attribute a where \
-            a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped) from pg_class c \
-            where c.oid in (%s)"
+           "select c.oid, pg_catalog.format('%%I.%%I',n.nspname,c.relname), (select \
+            count(*) from pg_attribute a where a.attrelid = c.oid and a.attnum > 0 and \
+            not a.attisdropped) from pg_class c join pg_namespace n on \
+            n.oid=c.relnamespace where c.oid in (%s)"
            (quote_ints oids))
     in
     Ok (List.map (fun r -> (int_of_string r.(0), (r.(1), int_of_string r.(2)))) rows)
@@ -151,6 +84,7 @@ type raw_col = {
   rname : string;
   roverride : override;
   rtype : int;
+  rtypmod : int;
   rtable : int;
   rcol : int;
 }
@@ -175,6 +109,7 @@ let describe_text conn ~fail ~sql ~nparams ~stmt_name =
                   rname = name;
                   roverride;
                   rtype = Pq.ftype dr i;
+                  rtypmod = Pq.fmod dr i;
                   rtable = Pq.ftable dr i;
                   rcol = Pq.ftablecol dr i;
                 })
@@ -198,14 +133,18 @@ let describe_one conn (q : Parse.t) ~stmt_name =
    result shape -- an optional block that adds a SELECT column would give the
    same OCaml function different row types depending on its arguments, which is
    why that is an error rather than a feature. *)
-let check_variants conn (q : Parse.t) ~stmt_base ~full_cols =
+let check_variants conn (q : Parse.t) ~stmt_base ~full_params ~full_cols =
   match q.Parse.dynamic with
   | None -> Ok ()
   | Some d ->
       let fail message =
         Error (Diag.v ~file:q.Parse.file ~line:q.Parse.line ~query:q.Parse.name message)
       in
-      let shape cols = List.map (fun c -> (c.rname, c.rtype, c.rtable, c.rcol)) cols in
+      let shape cols =
+        List.map
+          (fun c -> (c.rname, c.roverride, c.rtype, c.rtypmod, c.rtable, c.rcol))
+          cols
+      in
       let expected = shape full_cols in
       let n = Array.length d.Parse.variant_sqls in
       let rec go mask =
@@ -223,8 +162,23 @@ let check_variants conn (q : Parse.t) ~stmt_base ~full_cols =
                   e with
                   Diag.message = Printf.sprintf "variant %d: %s" mask e.Diag.message;
                 }
-          | Ok (_, cols) ->
-              if shape cols <> expected then
+          | Ok (params, cols) ->
+              let absent =
+                Array.to_list d.Parse.block_params
+                |> List.mapi (fun k names ->
+                    if mask land (1 lsl k) = 0 then names else [])
+                |> List.concat
+              in
+              let expected_params =
+                List.combine q.Parse.params full_params
+                |> List.filter_map (fun (p, oid) ->
+                    if List.mem p.Parse.pname absent then None else Some oid)
+              in
+              if params <> expected_params then
+                fail
+                  (Printf.sprintf "optional blocks change parameter types in variant %d"
+                     mask)
+              else if shape cols <> expected then
                 fail
                   (Printf.sprintf
                      "optional blocks change the result shape: variant %d returns \
@@ -249,7 +203,7 @@ let describe_all conn (queries : Parse.t list) =
         | Ok (params, cols) -> (
             match
               check_variants conn q ~stmt_base:(Printf.sprintf "sqlml_%d" i)
-                ~full_cols:cols
+                ~full_params:params ~full_cols:cols
             with
             | Error e -> Error e
             | Ok () -> collect ((q, params, cols) :: acc) (i + 1) tl))
@@ -264,29 +218,9 @@ let describe_all conn (queries : Parse.t list) =
   in
   let all_tables = uniq (List.filter (fun t -> t <> 0) (List.map fst all_pairs)) in
   let catalog f = Result.map_error (fun (d : Pq.diag) -> Diag.v d.Pq.message) f in
-  let* tinfos = catalog (type_infos conn all_type_oids) in
-  (* an array of an enum carries its labels on the element type *)
-  let elem_oids =
-    List.filter_map
-      (fun (_, i) -> if i.telem_oid <> 0 then Some i.telem_oid else None)
-      tinfos
-  in
-  let* elabels = catalog (enum_labels conn (uniq (all_type_oids @ elem_oids))) in
-  let* nn = catalog (not_null_map conn all_pairs) in
+  let* types = Pg_type.discover conn all_type_oids in
   let* tinfo = catalog (table_info conn all_tables) in
-  let info oid =
-    List.assoc_opt oid tinfos
-    |> Option.value ~default:{ tname = "unknown"; telem_name = None; telem_oid = 0 }
-  in
-  let type_name oid = (info oid).tname in
-  let elem_name oid = (info oid).telem_name in
-  (* for an array, the interesting labels are the element type's *)
-  let labels oid =
-    let i = info oid in
-    let key = if i.telem_oid <> 0 then i.telem_oid else oid in
-    List.assoc_opt key elabels |> Option.value ~default:[]
-  in
-  let attnotnull t c = List.assoc_opt (t, c) nn |> Option.value ~default:false in
+  let info oid = List.assoc oid types in
   Ok
     (List.map
        (fun (q, ps, cs) ->
@@ -297,17 +231,16 @@ let describe_all conn (queries : Parse.t list) =
                  match c.roverride with
                  | Force_not_null -> false
                  | Force_nullable -> true
-                 | No_override -> not (attnotnull c.rtable c.rcol)
+                 | No_override -> true
                in
                {
                  name = c.rname;
-                 type_name = type_name c.rtype;
-                 elem_type_name = elem_name c.rtype;
+                 pg_type = info c.rtype;
+                 typmod = c.rtypmod;
                  table = Option.map fst (List.assoc_opt c.rtable tinfo);
                  table_oid = c.rtable;
                  table_col = c.rcol;
                  nullable;
-                 enum_labels = labels c.rtype;
                })
              cs
          in
@@ -323,8 +256,10 @@ let describe_all conn (queries : Parse.t list) =
                else
                  match List.assoc_opt t tinfo with
                  | Some (tname, live)
-                   when live
-                        = List.length (uniq (List.map (fun c -> c.table_col) columns)) ->
+                   when List.length columns = live
+                        && live
+                           = List.length (uniq (List.map (fun c -> c.table_col) columns))
+                   ->
                      Some tname
                  | _ -> None)
          in
@@ -342,9 +277,7 @@ let describe_all conn (queries : Parse.t list) =
                    (match decl with
                    | Some p -> p.Parse.pname
                    | None -> Printf.sprintf "arg%d" (i + 1));
-                 ptype_name = type_name oid;
-                 pelem_type_name = elem_name oid;
-                 penum_labels = labels oid;
+                 pg_type = info oid;
                  pnullable =
                    (match decl with Some p -> p.Parse.nullable | None -> false);
                })
@@ -364,19 +297,24 @@ let report d =
   (match d.model_table with Some t -> bp "  model    : %s (full row)\n" t | None -> ());
   List.iter
     (fun p ->
-      bp "  param $%d : %-14s %s%s%s\n" p.index p.ptype_name p.pname
+      bp "  param $%d : %-14s %s%s%s\n" p.index
+        (Pg_type.qualified p.pg_type.id)
+        p.pname
         (if p.pnullable then "  [nullable]" else "")
-        (match p.penum_labels with
+        (match match Pg_type.kind p.pg_type with Pg_type.Enum l -> l | _ -> [] with
         | [] -> ""
         | l -> "  enum{" ^ String.concat "|" l ^ "}"))
     d.params;
   List.iter
     (fun c ->
-      bp "  col      : %-14s %-14s %s%s%s\n" c.name c.type_name
-        (if c.nullable then "nullable" else "NOT NULL")
+      bp "  col      : %-14s %-14s %s%s%s\n" c.name
+        (Pg_type.qualified c.pg_type.id)
+        (if c.nullable then "nullable" else "asserted NOT NULL")
         (if c.table_oid = 0 then "  [computed]"
          else Printf.sprintf "  [tbl %d col %d]" c.table_oid c.table_col)
-        (match c.enum_labels with [] -> "" | l -> "  enum{" ^ String.concat "|" l ^ "}"))
+        (match match Pg_type.kind c.pg_type with Pg_type.Enum l -> l | _ -> [] with
+        | [] -> ""
+        | l -> "  enum{" ^ String.concat "|" l ^ "}"))
     d.columns;
   Buffer.add_char b '\n';
   Buffer.contents b
@@ -384,12 +322,22 @@ let report d =
 (* Explicit constructors: the records are private so pipeline code cannot
    fabricate them, but two legitimate producers exist besides the server --
    tests, and the offline snapshot cache, which deserializes exactly these. *)
+let column ~name ~pg_type ~typmod ~table ~table_oid ~table_col ~nullable =
+  { name; pg_type; typmod; table; table_oid; table_col; nullable }
+
+let param ~index ~pname ~pg_type ~pnullable = { index; pname; pg_type; pnullable }
+
 let v_column ~name ~type_name ~elem_type_name ~table ~table_oid ~table_col ~nullable
     ~enum_labels =
-  { name; type_name; elem_type_name; table; table_oid; table_col; nullable; enum_labels }
+  column ~name
+    ~pg_type:(Pg_type.legacy ~name:type_name ~element:elem_type_name ~labels:enum_labels)
+    ~typmod:(-1) ~table ~table_oid ~table_col ~nullable
 
 let v_param ~index ~pname ~ptype_name ~pelem_type_name ~penum_labels ~pnullable =
-  { index; pname; ptype_name; pelem_type_name; penum_labels; pnullable }
+  param ~index ~pname
+    ~pg_type:
+      (Pg_type.legacy ~name:ptype_name ~element:pelem_type_name ~labels:penum_labels)
+    ~pnullable
 
 let v_described ~query ~params ~columns ~model_table =
   { query; params; columns; model_table }

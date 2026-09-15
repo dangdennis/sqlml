@@ -73,6 +73,23 @@ to_string = "Email.to_string"
         check "neither matches -> None"
           (Config.custom c ~key:(Some "users.email") ~pg_type:"text" = None));
 
+  with_toml "[rename]\nusers = \"person\"\n" (function
+    | Error _ -> check "qualification fixture loads" false
+    | Ok c ->
+        check "ambiguous shorthand rejected"
+          (Result.is_error (Config.qualify c ~names:[ "a.users"; "b.users" ]));
+        let qualified = Result.get_ok (Config.qualify c ~names:[ "a.users" ]) in
+        check "unambiguous shorthand expands"
+          (Config.renamed qualified "a.users" = Some "person"));
+  with_toml "[rename]\nusers = \"short\"\n\"a.users\" = \"exact\"\n" (function
+    | Error _ -> check "qualified precedence fixture loads" false
+    | Ok c ->
+        check "qualified key wins"
+          (Config.renamed
+             (Result.get_ok (Config.qualify c ~names:[ "a.users" ]))
+             "a.users"
+          = Some "exact"));
+
   (* error paths name the problem *)
   with_toml "[types.citext]\nocaml = \"Email.t\"\n" (function
     | Error d ->

@@ -4,6 +4,7 @@
 val source :
   src:string ->
   enums:(string * string list) list ->
+  composites:(string * Resolve.field list) list ->
   rows:(string * Resolve.field list) list ->
   Resolve.resolved list ->
   string * string

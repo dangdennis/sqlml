@@ -4,7 +4,12 @@
 ; workspace only.
 
 (tests
- (names test_sqlml test_sqlstate test_interval test_value_row)
+ (names
+  test_sqlml
+  test_sqlstate
+  test_interval
+  test_value_row
+  test_containers)
  (package sqlml)
  (libraries sqlml ptime))
 
@@ -12,6 +17,7 @@
  (names
   test_parse
   test_typemap
+  test_pg_type
   test_config
   test_run
   test_resolve_render
